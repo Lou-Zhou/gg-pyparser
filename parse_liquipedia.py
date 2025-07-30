@@ -2,46 +2,21 @@ import regex as re
 from datetime import datetime
 import mwparserfromhell as mw
 import pandas as pd
+import numpy as np
 # functions to parse liquipedia data
+
 def parse_team_name(name):
     return re.search(r"\{\{TeamOpponent\|([^}|]+)", name)[1]
 
-def parse_date(wiki_time_str):
-
-    tz_match = re.search(r"\{\{Abbr/([A-Z]+)\}\}", wiki_time_str)
-    timezone = tz_match.group(1) if tz_match else None
-
-    date_str = re.sub(r"\{\{.*?\}\}", "", wiki_time_str).strip()
-
-    dt = datetime.strptime(date_str, "%B %d, %Y - %H:%M")
-
-    return dt, timezone
 def parse_map(map):
     wikicode = mw.parse(map)
 
     template = wikicode.filter_templates()[0]
 
     map_data = {param.name.strip(): param.value.strip_code().strip() for param in template.params}
+    if len(map_data) == 0:
+        raise Exception(f"No maps were found in {map}")
     return map_data
-import re
-
-def ensure_round_unique(parsed):
-    seen_keys = []
-    seen_values = []
-    new_parsed = []
-    iter = 2
-    #duplicated keys(usually from competition stage - see 2025 blast bounty spring qual), just add _{num} to end
-    for key, value in parsed:
-        if key in seen_keys and value not in seen_values:
-            key = f"{key}_{iter}"
-            iter += 1
-        else:
-            seen_keys.append(key)
-            seen_values.append(value)
-        new_parsed.append((key, value))
-    return new_parsed
-
-
 
 
 def parse_is_finished(finished_str):
@@ -127,3 +102,98 @@ def parse_game_groups(stage, info, game):
     else:
         new_games =  pd.concat(parse_grouped_games(stage, info, game))
     return new_games
+
+def parseTeam(text):
+    #get name
+    match = re.search(r"\|\s*team\s*=\s*([^|}]+)", text)
+    team = match.group(1).strip() if match else None
+        
+    #get qualification method
+    match = re.search(r"\|\s*qualifier\s*=\s*([^|}]+)", text)
+    qualifier =  match.group(1).strip("/[") if match else None
+
+    match = re.findall(r"\b(p\d+|c)\s*=\s*([^\s|}]+)", text)
+    players = {k: v for k, v in match} if match else None
+    #find dnps
+    match = re.search(r"\b(xxdnp)\s*=\s*(true)\b", text)
+    dnps = (value for key, value in  match.groups()) if match else ()
+        
+    team_dict = {"team": team, "qualifier": qualifier, "dnps": dnps}
+    team_dict.update(players)
+    return pd.Series(team_dict)
+
+#get broadcast talent
+def parseBroadcaster(text):
+    #get broadcast role
+    match = re.search(r"\|\s*position\s*=\s*([^|}]+)", text)
+    position = match.group(1).strip() if match else None
+        
+    #get broadcast language
+    match = re.search(r"\|\s*lang\s*=\s*([^|}]+)", text)
+    language =  match.group(1).strip() if match else None
+
+    match = re.findall(r"\|b\d+\s*=\s*([^\|}]+)", text)
+    names = [m.strip() for m in match]
+
+    return pd.DataFrame(data = {
+        "name": names,
+        "language": [language] * len(names),
+        "position": [position] * len(names)
+    })
+def parse_prizes(text):
+    slots_raw = re.findall(r"\{\{Slot\|([^}]*)\}\}", str(text))
+
+    #slots = [(slot.split("=")[0], slot.split("=")[1]) for slot in slots]
+    slots_tuples = [
+        re.findall(r"(\w+)=([^|]+)", slot)  # captures key and value
+        for slot in slots_raw
+    ]
+    match = re.findall(r"(qualifies\d+name)=([^\|}]+)", str(text))
+    #build maping of future qualifying events
+    qualifications = {re.sub(r"qualifies(\d+)name", r"qualified\1", k): v.strip() for k, v in match}
+    qualifications.update({"none":None})
+    dict_rows = []
+    for pairs in slots_tuples:
+        slot_dict = dict(pairs)
+        for key in list(slot_dict.keys()):
+            if re.match(r"qualified\d+", key):
+                slot_dict["qualifying"] = key  
+                slot_dict.pop('key', None)
+
+        if "qualifying" not in slot_dict:
+            slot_dict["qualifying"] = "none"
+
+        dict_rows.append(slot_dict)
+    df = pd.DataFrame(dict_rows)
+    df['qualifying'] = df['qualifying'].map(qualifications)
+    df['count'] = df['count'].fillna(1)
+    df['teams'] = np.empty((len(df), 0)).tolist()
+    return df
+
+def parse_expanded_prize_pool(text):
+    match = re.findall(r"\{\{prize pool slot\b(?:[^{}]|\{\{[^{}]*\}\})*\}\}", 
+                    str(text), re.DOTALL | re.IGNORECASE)
+    all_placements = []
+    for placement in match:
+        parts = [p.strip() for p in placement.split("|") if p.strip()]
+
+        data = {}
+        team_names = []
+
+        for part in parts:
+            if "=" in part:
+                key, value = part.split("=", 1)
+                data[key.strip()] = value.strip()
+            else:
+                # Standalone part is likely team name
+                team_name = part.strip()
+                team_names.append(team_name)
+        data['team'] = [team for team in team_names if "{" not in team]
+        data['localprize'] = data['localprize'].strip("[") if 'localprize' in data else None
+        data = {
+                (k.strip("{}") if isinstance(k, str) else k): 
+                (v.strip("{}") if  isinstance(v, str) else v)
+                for k, v in data.items()
+            }
+        all_placements.append(data)
+    return pd.DataFrame(all_placements)

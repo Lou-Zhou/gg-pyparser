@@ -35,5 +35,9 @@ class TestMatchData(unittest.TestCase):
     def test_lower_tier_2(self):
         tourn = csTournament("AGES/GO_GAME_Festival/2025").get_matches().shape[0]
         self.assertEqual(tourn, 9)
+
+    def test_stf(self):
+        tourn = csTournament("Hero_Esports/Asian_Champions_League/2025").get_matches().shape[0]
+        self.assertEqual(tourn, 43)
 if __name__ == '__main__':
     unittest.main()
