@@ -5,10 +5,12 @@ import regex as re
 import parse_liquipedia
 
 class LiquipediaPage:
-    def __init__(self, game, name, user = "initial python testing(github.com/louzhou)", throttle = 0):
+    def __init__(self, game, name, user = "initial python testing(github.com/louzhou)", throttle = 0, action = "query"):
+        #support for action = query only, future work for action = parse(html form)
         self.user = user
         self.game = game
         self.name = name
+        self.action = action
         self.throttle = throttle
         self.raw_str = self._make_request()
         
@@ -18,12 +20,14 @@ class LiquipediaPage:
 
 
     def _make_request(self):
-        raw_str = list(parse_liquipedia.make_request(self.user, self.game, self.throttle, self.name).values())[0]
-        match = re.search(r"#REDIRECT\s*\[\[(.*?)\]\]", raw_str, flags=re.IGNORECASE)
-        if match:
-            #check if redirect is needed
-            new_name = match.group(1)
-            raw_str = parse_liquipedia.make_request(self.user, self.game, self.throttle, new_name)
+        raw_str = list(parse_liquipedia.make_request(self.user, self.game, self.throttle, self.name, self.action).values())[0]
+        if self.action == "query":
+            match = re.search(r"#REDIRECT\s*\[\[(.*?)\]\]", raw_str, flags=re.IGNORECASE)
+            if match:
+                #check if redirect is needed
+                new_name = match.group(1)
+                raw_str = parse_liquipedia.make_request(self.user, self.game, self.throttle, new_name, self.action)
+            #TODO: deal with case of html redirect
         return mw.parse(raw_str)
         
             

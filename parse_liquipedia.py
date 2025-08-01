@@ -9,7 +9,7 @@ class SectionNotFoundException(Exception):
     pass
 class CouldNotReadJsonException(Exception):
     pass
-def make_request(user, game, throttle,  page_name):
+def make_request(user, game, throttle,  page_name, action):
     headers = {
             "User-Agent": user,
             "Accept-Encoding": "gzip"
@@ -19,13 +19,16 @@ def make_request(user, game, throttle,  page_name):
 
         time.sleep(throttle)
         request_params={
-                "action": "query",
-                "prop": "revisions",
-                "rvprop": "content",
-                "titles": page_name,
-                "rvslots": "main",
+                "action": action,
                 "format": "json"
             }
+        if action == "query":
+            request_params["rvprop"] =  "content"
+            request_params['rvslots'] = 'main'
+            request_params['titles'] = page_name
+            request_params['prop'] = 'revisions'
+        else:
+            request_params['page'] = page_name
         response = requests.get(
             f"https://liquipedia.net/{game}/api.php",
             headers=headers,
@@ -34,14 +37,21 @@ def make_request(user, game, throttle,  page_name):
         )
         response.raise_for_status()  
 
-        try: 
-            response = response.json()['query']['pages']
-            output_map = {}
-            for id, page in response.items():
-                title = page['title']
-                raw_str = page['revisions'][0]['slots']['main']['*']
-                output_map[title.lower().strip().replace(" ", "_")] = raw_str
-            return output_map
+        try:
+            if action == "query":
+                response = response.json()['query']['pages']
+                output_map = {}
+                for id, page in response.items():
+                    title = page['title']
+                    raw_str = page['revisions'][0]['slots']['main']['*']
+                    output_map[title.lower().strip().replace(" ", "_")] = raw_str
+                return output_map
+            #TODO: handling multiple html pages in one request? is this even possible
+            json = response.json()
+            response = response.json()['parse']
+            title = response['title']
+            raw_str = response['text']['*']
+            return {title.lower().strip().replace(" ", "_"): raw_str}
 
         except KeyError as e:
             raise CouldNotReadJsonException(f"Could not Read JSON Request Result, indicating potential input string issues: {e}")
