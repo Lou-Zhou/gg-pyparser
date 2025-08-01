@@ -1,12 +1,85 @@
 import regex as re
-from datetime import datetime
 import mwparserfromhell as mw
 import pandas as pd
 import numpy as np
+import requests
+import time
 # functions to parse liquipedia data
+class SectionNotFoundException(Exception):
+    pass
+class CouldNotReadJsonException(Exception):
+    pass
+def make_request(user, game, throttle,  page_name):
+    headers = {
+            "User-Agent": user,
+            "Accept-Encoding": "gzip"
+        }
 
+    try:
+
+        time.sleep(throttle)
+        request_params={
+                "action": "query",
+                "prop": "revisions",
+                "rvprop": "content",
+                "titles": page_name,
+                "rvslots": "main",
+                "format": "json"
+            }
+        response = requests.get(
+            f"https://liquipedia.net/{game}/api.php",
+            headers=headers,
+            params = request_params,
+            timeout=10
+        )
+        response.raise_for_status()  
+
+        try: 
+            response = response.json()['query']['pages']
+            output_map = {}
+            for id, page in response.items():
+                title = page['title']
+                raw_str = page['revisions'][0]['slots']['main']['*']
+                output_map[title.lower().strip().replace(" ", "_")] = raw_str
+            return output_map
+
+        except KeyError as e:
+            raise CouldNotReadJsonException(f"Could not Read JSON Request Result, indicating potential input string issues: {e}")
+    except requests.exceptions.Timeout:
+        raise TimeoutError("Request to Liquipedia API timed out.")
+    except requests.exceptions.RequestException as e:
+        raise ConnectionError(f"Request to Liquipedia API failed: {e}")
+    except Exception as e:
+        raise RuntimeError(f"Unexpected error in _make_request: {e}")
+    
+
+def parse_player_team_history(str):
+    pattern = r"'''(.*?)'''\s*(.*?)(?=(?:'''|$))"
+
+    matches = re.findall(pattern, str, flags=re.DOTALL)
+    pattern = r"{{TH|(.*?)}}"
+    game_teams = []
+    for game, text in matches:
+        pattern = r"\{\{TH\|.*?\}\}"
+        #parse each team
+        teams = re.findall(pattern, text, flags = re.DOTALL)
+        
+        for team in teams:
+            team_dict = {}
+            pattern = r"\{\{TH\|([^|]+?)\|([^|}]+)(?:\|([^}]+))?\}\}"
+            match = re.match(pattern, team)
+            if match:
+                date_range = match.group(1).strip()  
+                team_dict["team"] = match.group(2).strip()        
+                
+                team_dict['start'], team_dict['end'] = re.split(r"\s*[−–—]\s*", date_range, maxsplit=1)
+                team_dict['status'] = match.group(3).strip() if match.group(3) else None
+                team_dict['game'] = game 
+                game_teams.append(team_dict)
+    return pd.DataFrame(game_teams)
 def parse_team_name(name):
-    return re.search(r"\{\{TeamOpponent\|([^}|]+)", name)[1]
+    t = re.search(r"\{\{TeamOpponent\|([^}|]*)", name)
+    return re.search(r"\{\{TeamOpponent\|([^}|]*)", name)[1] # type: ignore
 
 def parse_map(map):
     wikicode = mw.parse(map)
@@ -80,21 +153,49 @@ def parse_playoff_data(info, game):
             r"(.*?)"                          
             r"(?=\|R\d+M\d+header=|\Z)"       
         )
+        #if header declarations are at top, just takes last RxMx - gives incorrect stage - TODO: fix
         if len(re.findall(regex, str(subinfo), re.DOTALL)) > 0:
-            stages = parse_series_data(subinfo, regex)
-            stages = {key.split("=")[1]: v for key, v in stages.items()}
+            header_regex = r"\|R(\d+)M\d+header=([^\n]+)"
+            #headers_list = re.findall(header_regex, str(subinfo))
+            headers = dict(re.findall(header_regex, str(subinfo)))
+            if len(headers) > 1:
+                #should have multiple headers,
+                for round_num, stage_name in headers.items():
+                    # Find all matches for this round
+                    regex = (
+                            r"\|R" + str(round_num) +
+                            r"M\d+=\s*(\{\{Match.*?\}\})\s*(?=\|R" +
+                            str(round_num) + r"M\d+=|\|R\d+M\d+=|\Z)"
+                        )
+                    round_matches = re.findall(regex, str(subinfo), re.DOTALL)
+                    for match_text in round_matches:
+                        match_df = parse_series(match_text, game)
+                        match_df['stage'] = stage_name
+                        alldfs.append(match_df)
+            else: #if not, parse manually up to down - dealing with issues where two headers are marked R1 but in different places
+                stages = parse_series_data(subinfo, regex)
+                for stage, text in stages.items():
+                    stage = stage.split("=")[1]
+                    matches = re.split(r'\|R\d+M\d+=', text)
+                    for match in matches:
+                        if "{{Match" in match:
+                            match_df = parse_series(match, game)
+                            match_df['stage'] = stage
+                            alldfs.append(match_df)
         else:
             #if fails, look at <!--stage-->
+            #can be situations where <!--x--> is being used as a temporary value for an event that has not happened yet
+            #i dont like the idea of hardcoding the terms "stage", "match", etc. but need to find a good way to deal with this TODO
             regex =  r'<!--\s*(.*?)\s*-->\s*(.*?)(?=\s*<!--\s*\w+|$)'
             stages = parse_series_data(subinfo, regex)
 
-        for stage, text in stages.items():
-            matches = re.split(r'\|R\d+M\d+=', text)
-            for match in matches:
-                if "{{Match" in match:
-                    match_df = parse_series(match, game)
-                    match_df['stage'] = stage
-                    alldfs.append(match_df)
+            for stage, text in stages.items():
+                matches = re.split(r'\|R\d+M\d+=', text)
+                for match in matches:
+                    if "{{Match" in match:
+                        match_df = parse_series(match, game)
+                        match_df['stage'] = stage
+                        alldfs.append(match_df)
     return alldfs
 def parse_game_groups(stage, info, game):
     if "Bracket" in info[0]:
@@ -119,7 +220,7 @@ def parseTeam(text):
     dnps = (value for key, value in  match.groups()) if match else ()
         
     team_dict = {"team": team, "qualifier": qualifier, "dnps": dnps}
-    team_dict.update(players)
+    team_dict.update(players) # type: ignore
     return pd.Series(team_dict)
 
 #get broadcast talent
@@ -197,3 +298,64 @@ def parse_expanded_prize_pool(text):
             }
         all_placements.append(data)
     return pd.DataFrame(all_placements)
+
+def get_name_content_map(text):
+
+    pattern = r"\|name(\d+)=(.*)"
+    key_mapping = dict(re.findall(pattern, text))
+    #print(text)
+    pattern = r"\|content(\d+)=\s*\n(.*?)(?=\n\|content\d+=|\n\|name\d+=|\n\}\})"
+    values = dict(re.findall(pattern, text, flags=re.S))
+    mapping = {key_mapping[k]: v for k,v in values.items()}
+    return mapping
+
+def parse_news_str(raw_str):
+    pattern = r"<ref.*?>(.*?)</ref>"
+    ref_content = re.findall(pattern, str(raw_str), flags=re.S)
+    
+    refs = []
+    for ref in ref_content:
+        # Find all key=value pairs
+        pairs = re.findall(r"(\w+)=([^|}]+)", ref)
+        
+        # Build dictionary dynamically
+        ref_dict = {k.strip(): v.strip("[ ]") for k, v in pairs}
+        refs.append(ref_dict)
+
+    entry = re.sub(r"\[\[([^\]]+)\]\]", r"\1", str(raw_str))#remove [[]]
+    entry = re.sub(r"<ref.*?>(.*?)</ref>", "", entry)#remove reference
+    entry = re.sub(r"(\*|')", "", entry).strip()
+    entry = re.split(r"\s-\s", entry)
+    if len(entry)  == 2:
+        return {"date":entry[0], "text": entry[1], "references":refs}
+    return -1
+
+def get_lowest_subsections(section):
+    """
+    Recursively gets all lowest-level subsections for a section.
+    """
+    subsections = section.get_sections(include_lead=False, include_headings=True)[1:]
+    if not subsections:
+        return [section]
+    
+    lowest = []
+    for sub in subsections:
+        lowest.extend(get_lowest_subsections(sub))
+    return lowest#rm duplicates
+
+def parse_person(text):
+    person = re.sub(r"<ref.*?>.*?</ref>|<ref.*?/>", "", text) #remove reference
+
+    pattern = r'(\w+)\s*=\s*(.*?)(?=\|\w+\s*=|$)' 
+    pairs = re.findall(pattern, person)
+    person_dict = {k.strip(): v.strip() for k, v in pairs}
+    
+    joindate = person_dict['joindate'].split("|") if 'joindate' in person_dict else None
+    if joindate and len(joindate) > 1:
+        person_dict['joindate'] = joindate[1]
+        person_dict['joindate_note'] = joindate[2]
+
+    if 'tournament' in person_dict:
+        tournaments = re.findall(r'\[\[[^\]|]+\|([^\]]+)\]\]', person)
+        person_dict['tournament'] = tournaments
+    return person_dict

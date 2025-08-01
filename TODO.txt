@@ -1,0 +1,18 @@
+BUGS TO FIX:
+
+1. Intel_Extreme_Masters_2025/Dallas/Europe/Open gives incorrect stage for R64 matches
+    - Probably due to how Rounds are labeled in the page's src - have a group of RxMx headers at the top
+    describing the bracket then for 5-6th place a new R1 header which conflicts with the old R1 headers
+    - I imagine for smaller tournaments, will have more variety with how the src is shaped so more potential for error
+
+2. regex =  r'<!--\s*(.*?)\s*-->\s*(.*?)(?=\s*<!--\s*\w+|$)' in parse_playoff_data
+    - For future events, this regex can sometimes false positive onto other labels(e.g. <-- August 23, 2025 -->)
+    - Obvious solution is to hardcode the terms "final", "stage", "match", etc but that is a really stupid way imo 
+    - Need to find a better solution to find proper titles
+    
+
+NEW FEATURES:
+
+1. Probably will have to use html parsing to get all players, tournaments, etc.
+2. For multi-stage tournaments(e.g. majors) - parsing the other stages when calling the original tournament - maybe using pipe operator to get multiple stages in one request
+3. Other Games
