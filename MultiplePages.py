@@ -30,12 +30,12 @@ class TeamPage(Team):
 class PlayerPage(Player):
     pass
 
-def createMultiplePages(game,page_names, page_types, user="initial python testing(github.com/louzhou)"):
+def createMultiplePages(game,page_names, page_types, user="initial python testing(github.com/louzhou)", action = "query"):
     #helper function to get many pages in one api call
     page_types = page_types if isinstance(page_types, list) else [page_types.lower()] * len(page_names)
     
     response = parse_liquipedia.make_request(
-            user, game, 0, "|".join(page_names)
+            user, game, 0, "|".join(page_names), action
         )
     objects = {}
     for name, ptype in zip(page_names, page_types):

@@ -1,12 +1,16 @@
 import mwparserfromhell as mw
-import time
-import requests
+from bs4 import BeautifulSoup
 import regex as re
 import parse_liquipedia
-
+from bs4.element import Tag
+import warnings
+class UnknownParsingMethodException(Exception):
+    pass
 class LiquipediaPage:
     def __init__(self, game, name, user = "initial python testing(github.com/louzhou)", throttle = 0, action = "query"):
         #support for action = query only, future work for action = parse(html form)
+        if action not in ["query", "parse"]:
+            raise UnknownParsingMethodException("Unknown Parsing Method")
         self.user = user
         self.game = game
         self.name = name
@@ -26,15 +30,51 @@ class LiquipediaPage:
             if match:
                 #check if redirect is needed
                 new_name = match.group(1)
-                raw_str = parse_liquipedia.make_request(self.user, self.game, self.throttle, new_name, self.action)
+                raw_str = list(parse_liquipedia.make_request(self.user, self.game, self.throttle, new_name, self.action).values())[0]
+            
+            return str(raw_str)
+        else:
             #TODO: deal with case of html redirect
-        return mw.parse(raw_str)
+            return str(raw_str)
         
             
+    def get_info(self, infobox_name: str | None = "Infobox league"):
+        if self.action == "query":
+            return self._get_info_wc(infobox_name)
+        return self._get_info_html()
+        
 
-    def get_info(self, infobox_name):
+    def _get_info_html(self):
+        souped = BeautifulSoup(self.get_raw_str(), "html.parser")
+        infoboxes = souped.select('div[class="fo-nttax-infobox"]')
+        if len(infoboxes) == 0:
+            raise parse_liquipedia.SectionNotFoundException("Infobox Section not Found")
+        if len(infoboxes) > 1:
+            warnings.warn("Multiple infoboxes detected, taking first one found", UserWarning)
+        infobox = infoboxes[0]
+
+        rows = infobox.find_all("div", class_="infobox-cell-2 infobox-description")
+        info = {}
+
+        for row in rows:
+            key = row.get_text(strip=True).rstrip(":")
+            value_div = row.find_next_sibling("div")
+            value = value_div.get_text(" ", strip=True)
+            info[key] = value
+        sponsors_div = infobox.find("div", string="Sponsor(s):")
+        if "Sponsor(s)" in info and sponsors_div:
+            sponsors_div = sponsors_div.find_next_sibling("div")
+            if isinstance(sponsors_div, Tag):
+                sponsors = [a.get_text(strip=True) for a in sponsors_div.find_all("a")]
+                info["Sponsor(s)"] = sponsors
+        return info
+
+
+
+    def _get_info_wc(self, infobox_name):
         infobox_dict = {}
-        for template in self.raw_str.filter_templates():
+        str_parsed = mw.parse(self.raw_str)
+        for template in str_parsed.filter_templates():
             if template.name.matches(infobox_name):
                 for param in template.params:
                     key = str(param.name).strip()
@@ -44,12 +84,13 @@ class LiquipediaPage:
                 break
         return infobox_dict
     @classmethod
-    def from_raw_str(cls, response,game = None,name = None, user="initial python testing(github.com/louzhou)", throttle=0):
+    def from_raw_str(cls, response,game = None,name = None, user="initial python testing(github.com/louzhou)", throttle=0, action = "query"):
         #alternate constructor to build from the raw string, used when parsing multiple tournaments
         obj = cls.__new__(cls)
         obj.user = user
         obj.game = game
         obj.name = name
         obj.throttle = throttle
-        obj.raw_str = mw.parse(response)
+        if action not in ["query", "action"]:
+            raise UnknownParsingMethodException("Unknown Parsing Method")
         return obj

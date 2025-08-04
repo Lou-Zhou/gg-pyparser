@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import requests
 import time
+from collections import defaultdict
 # functions to parse liquipedia data
 class SectionNotFoundException(Exception):
     pass
@@ -113,13 +114,16 @@ def parse_series_data(series_info, regex, cleaning_function = lambda x: x):
 def parse_series(series_info, game):
     #get games:
     pattern = r"(map\d+)\s*=\s*(\{\{Map\|.*?\}\})"
+    if game == "dota2":
+        pattern = r"(map\d+)\s*=\s*(\{\{Map\b(?:[^{}]|\{[^{}]*\})*\}\})"
     matches = re.findall(pattern, str(series_info), re.DOTALL)
     matches = pd.DataFrame([parse_map(match_data) for match_data in matches])
 
     #get teams:
     pattern = r"(opponent\d+)\s*=\s*(\{\{TeamOpponent\|.*?\}\})"
     team_names = parse_series_data(series_info, pattern, parse_team_name)
-
+    if len(team_names) == 0:
+        return matches 
     #get date:
     pattern = r"(date)=(.+?\{\{Abbr/[A-Z]+\}\})\|"
     date = parse_series_data(series_info, pattern)
@@ -163,7 +167,8 @@ def parse_playoff_data(info, game):
             r"(.*?)"                          
             r"(?=\|R\d+M\d+header=|\Z)"       
         )
-        #if header declarations are at top, just takes last RxMx - gives incorrect stage - TODO: fix
+        #if header declarations are at top, just takes last RxMx 
+        # if uses a mixture of two heading styles(header= and <-->, does not work - see dota2/Esports_World_Cup/2025/North_America
         if len(re.findall(regex, str(subinfo), re.DOTALL)) > 0:
             header_regex = r"\|R(\d+)M\d+header=([^\n]+)"
             #headers_list = re.findall(header_regex, str(subinfo))
@@ -277,7 +282,7 @@ def parse_prizes(text):
         dict_rows.append(slot_dict)
     df = pd.DataFrame(dict_rows)
     df['qualifying'] = df['qualifying'].map(qualifications)
-    df['count'] = df['count'].fillna(1)
+    df['count'] = df['count'].fillna(1) if "count" in dict_rows else 0
     df['teams'] = np.empty((len(df), 0)).tolist()
     return df
 
@@ -369,3 +374,82 @@ def parse_person(text):
         tournaments = re.findall(r'\[\[[^\]|]+\|([^\]]+)\]\]', person)
         person_dict['tournament'] = tournaments
     return person_dict
+
+
+def parse_bracket_recursive_html(bracket, subround_names, output = None):
+    if output is None:
+        output = defaultdict(list)
+    closest_header = bracket.find_previous("div", class_="brkts-round-header")
+    closest_header  = [subround_name.contents[0] for subround_name in closest_header]
+    closest_header  = [name for name in closest_header  if str(name).lower().strip() != "qualified"]
+    #recheck headers
+    if set(closest_header).isdisjoint(set(subround_names)):
+        #no common between original header list and now new closest header list, new header list takes over
+        subround_names = closest_header
+
+    #recursive method to parse through bracket
+    names_copied = subround_names.copy()
+    subbodies = []
+    for child in bracket.find_all("div", recursive=False):  
+        #find all brkts-round-body in the next-next level
+        subbodies = subbodies + child.find_all("div", class_="brkts-round-body", recursive=False)
+    matches = bracket.find_all("div", class_="brkts-round-center", recursive=False)
+    last_round = names_copied.pop()
+    output[last_round] = output[last_round] + matches
+    for div in subbodies:
+        parse_bracket_recursive_html(div, names_copied, output = output)
+    return output
+
+def parse_side_scores_html(table):
+    scores_with_halves = []
+    half_counter = 1
+    ot_counter = 1
+    
+    for td in table.select("td"):
+        classes = td.get("class", [])
+        val = int(td.get_text(strip=True)) if td.get_text() else None
+        
+        if any("brkts-cs-score-color-ct" in c for c in classes) or any("brkts-cs-score-color-t" in c for c in classes):
+            side = "T" if any("brkts-cs-score-color-ct" in c for c in classes) else "CT"
+            label = f"Half_{half_counter}"
+            if half_counter > 2:
+                label = f"OT_{ot_counter}"
+                ot_counter += 1
+            half_counter += 1
+            scores_with_halves.append((label, side, val))
+        
+    
+    return scores_with_halves
+
+def parse_match_html(match):
+    countdown = match.find("span", class_ = "match-info-countdown")
+    time = countdown.get_text() if countdown else None
+    lhs_tag = match.select_one(".match-info-header-opponent-left")
+    lhs_url, lhs_title = None, None
+    if lhs_tag:
+        lhs_url, lhs_title = lhs_tag.select_one(".name a")['href'], lhs_tag.select_one(".name a")['title']
+    rhs_url, rhs_title = None, None
+    rhs_tag = match.select_one(".match-info-header-opponent:not(.match-info-header-opponent-left)")
+    if rhs_tag:
+        rhs_url, rhs_title =  rhs_tag.select_one(".name a")['href'], rhs_tag.select_one(".name a")['title']
+    games = match.find_all("div", class_ = "brkts-popup-body-element brkts-popup-body-game")
+    parsed_games = []
+    for game in games:
+        map_tag = game.select_one("a")
+        map_name = map_tag.get_text(strip=True)
+
+        left_table = game.select_one("div[style*='direction:ltr'] table")
+        left_scores = parse_side_scores_html(left_table)
+        left_scores = {f"{half}_{side}": score for half, side, score in left_scores}
+
+        right_table = game.select_one("div[style*='direction:rtl'] table")
+        right_scores = parse_side_scores_html(right_table)
+        right_scores = {f"{half}_{side}": score for half, side, score in right_scores}
+        map_dict = {"t1": lhs_title, "t1_url": lhs_url, "t2": rhs_title, "t2_url": rhs_url, "map": map_name, 
+                    "t1_scores": left_scores, "t2_scores": right_scores, "time": time}
+        parsed_games.append(map_dict)
+
+    return pd.DataFrame(parsed_games)
+
+
+

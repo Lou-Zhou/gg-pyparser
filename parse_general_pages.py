@@ -1,8 +1,8 @@
 from bs4 import BeautifulSoup
 import LiquipediaPage
 import pandas as pd
-def parse_tournaments(name):
-    raw_str = LiquipediaPage.LiquipediaPage(game = "counterstrike", name = name, action = "parse").get_raw_str()
+def parse_tournaments(name, game):
+    raw_str = LiquipediaPage.LiquipediaPage(game = game, name = name, action = "parse").get_raw_str()
     soup = BeautifulSoup(str(raw_str), "html")
     all_tournaments = []
     for tournament in soup.find_all("div", class_ = "gridRow"):
@@ -55,9 +55,9 @@ def parse_tournaments(name):
 
     return pd.DataFrame(all_tournaments)
 
-def parse_teams(region):
+def parse_teams(region, game):
     name = f"Portal:/Teams/{region}"
-    raw_str = LiquipediaPage.LiquipediaPage(game = "counterstrike", name = name, action = "parse").get_raw_str()
+    raw_str = LiquipediaPage.LiquipediaPage(game = game, name = name, action = "parse").get_raw_str()
     soup = BeautifulSoup(str(raw_str), "html")
     tables = soup.find_all("table", class_=["wikitable", "collapsible", "smwtable"])
     teams_data = []
@@ -88,9 +88,9 @@ def parse_teams(region):
 
     return pd.DataFrame(teams_data)
 
-def parse_players(region):
+def parse_players(region, game):
     name = f"Portal:Players/{region}"
-    raw_str = LiquipediaPage.LiquipediaPage(game = "counterstrike", name = name, action = "parse").get_raw_str()
+    raw_str = LiquipediaPage.LiquipediaPage(game = game, name = name, action = "parse").get_raw_str()
     soup = BeautifulSoup(str(raw_str), "html")
     tables = soup.find_all("table", class_=["wikitable", "collapsible"])
     player_dict = []
@@ -105,9 +105,9 @@ def parse_players(region):
     return pd.DataFrame(player_dict)
 
 
-def parse_banned_players(company):
+def parse_banned_players(company, game):
     name = f"Banned_Players/{company}"
-    raw_str = LiquipediaPage.LiquipediaPage(game = "counterstrike", name = name, action = "parse").get_raw_str()
+    raw_str = LiquipediaPage.LiquipediaPage(game = game, name = name, action = "parse").get_raw_str()
     soup = BeautifulSoup(str(raw_str), "html")
     tables = soup.find_all("div", class_ = "divTable Ref")
     banned = []
@@ -133,9 +133,9 @@ def parse_banned_players(company):
 
     return pd.DataFrame(banned)
 
-def parse_transfers(time):
+def parse_transfers(time, game):
     name = f"Player_Transfers/{time}"
-    raw_str = LiquipediaPage.LiquipediaPage(game = "counterstrike", name = name, action = "parse").get_raw_str()
+    raw_str = LiquipediaPage.LiquipediaPage(game = game, name = name, action = "parse").get_raw_str()
     soup = BeautifulSoup(str(raw_str), "html")
     tables = soup.find_all("div", class_ = "divTable mainpage-transfer Ref")
     transfers_list = []
