@@ -38,7 +38,7 @@ class LiquipediaPage:
             return str(raw_str)
         
             
-    def get_info(self, infobox_name: str | None = "Infobox league"):
+    def get_info(self, infobox_name: str = "Infobox league"):
         if self.action == "query":
             return self._get_info_wc(infobox_name)
         return self._get_info_html()
@@ -59,14 +59,10 @@ class LiquipediaPage:
         for row in rows:
             key = row.get_text(strip=True).rstrip(":")
             value_div = row.find_next_sibling("div")
-            value = value_div.get_text(" ", strip=True)
+            value = [a.get_text(strip=True) for a in value_div.find_all("a") if a.get_text(strip=True)]
+            if len(value) <= 1:
+                value = value_div.get_text("", strip = True)
             info[key] = value
-        sponsors_div = infobox.find("div", string="Sponsor(s):")
-        if "Sponsor(s)" in info and sponsors_div:
-            sponsors_div = sponsors_div.find_next_sibling("div")
-            if isinstance(sponsors_div, Tag):
-                sponsors = [a.get_text(strip=True) for a in sponsors_div.find_all("a")]
-                info["Sponsor(s)"] = sponsors
         return info
 
 

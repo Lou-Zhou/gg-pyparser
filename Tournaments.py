@@ -1,5 +1,6 @@
 import mwparserfromhell as mw
 import parse_liquipedia
+import parse_liquipedia_html
 import pandas as pd
 import re
 from LiquipediaPage import LiquipediaPage
@@ -86,7 +87,7 @@ class Tournament(LiquipediaPage):
             title = matchlist.select("div.brkts-matchlist-title")[0].get_text().replace(" Show Hide", "")
             matches = matchlist.find_all("div", class_ = "brkts-popup brkts-match-info-popup")
             for match in matches:
-                parsed = parse_liquipedia.parse_match_html(match)
+                parsed = parse_liquipedia_html.parse_match_html(match)
                 parsed['stage'] = header
                 parsed['substage'] = title
                 all_matches.append(parsed)
@@ -103,10 +104,10 @@ class Tournament(LiquipediaPage):
                 closest_header = subbracket.find_previous("div", class_="brkts-round-header")
                 subround_names = [subround_name.contents[0] for subround_name in closest_header]
                 subround_names = [name for name in subround_names if str(name).lower().strip() != "qualified"]
-                output = parse_liquipedia.parse_bracket_recursive_html(subbracket, subround_names)
+                output = parse_liquipedia_html.parse_bracket_recursive_html(subbracket, subround_names)
                 for sub_round, body in output.items():
                     for match in body:
-                        parsed = parse_liquipedia.parse_match_html(match)
+                        parsed = parse_liquipedia_html.parse_match_html(match)
                         parsed['stage'] = header
                         parsed['substage'] = sub_round
                         all_matches.append(parsed)
@@ -114,7 +115,7 @@ class Tournament(LiquipediaPage):
         single_matches = souped.find_all("div", class_ = "brkts-popup brkts-popup brkts-match-info-flat")
         for match in single_matches:
             header = match.find_previous("span", class_="mw-headline").get_text()
-            parsed = parse_liquipedia.parse_match_html(match)
+            parsed = parse_liquipedia_html.parse_match_html(match)
             parsed['stage'] = header
             parsed['substage'] = header
             all_matches.append(parsed)
@@ -124,7 +125,8 @@ class Tournament(LiquipediaPage):
             return pd.concat(all_matches)
         raise SectionNotFoundException("No matches found")
 
-    
+    def get_results(self, results_name = None):
+        raise AttributeError("")
 
     def get_matches(self):
         if self.action == "query":

@@ -13,7 +13,7 @@ BUGS TO FIX:
     
 
 NEW FEATURES:
-
-1. For multi-stage tournaments(e.g. majors) - parsing the other stages when calling the original tournament - maybe using pipe operator to get multiple stages in one request
+1. Ensure that html parsing and wc parsing give the same(as much as possible) data structure output
+2. For multi-stage tournaments(e.g. majors) - parsing the other stages when calling the original tournament - maybe using pipe operator to get multiple stages in one request
     - I'm not sure its possible to parse this from the wc 
-2. Other Games
+3. Other Games
