@@ -24,11 +24,11 @@ import re
 from bs4 import BeautifulSoup
 import pandas as pd
 import mwparserfromhell as mw
-from parse_liquipedia import parse_liquipedia_html, parse_liquipedia_wc
-from liquipedia_objects.liquipedia_page import LiquipediaPage
+from ggpyscraper.parse_liquipedia import parse_liquipedia_html, parse_liquipedia_wc
+from ggpyscraper.liquipedia_objects import liquipedia_page
 
 
-class Player(LiquipediaPage):
+class Player(liquipedia_page.LiquipediaPage):
     """
     A class to represent a player.
 

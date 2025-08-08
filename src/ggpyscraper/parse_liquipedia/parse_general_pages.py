@@ -9,7 +9,7 @@ Dependencies
 """
 import pandas as pd
 from bs4 import BeautifulSoup
-import liquipedia_objects.liquipedia_page as liquipedia_page
+from ggpyscraper.liquipedia_objects import liquipedia_page
 def parse_tournaments(name : str, game: str) -> pd.DataFrame:
     """
     Parses general tournament pages like https://liquipedia.net/counterstrike/S-Tier_Tournaments

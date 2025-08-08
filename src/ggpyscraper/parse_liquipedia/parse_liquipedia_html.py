@@ -19,10 +19,10 @@ parse_liquipedia.SectionNotFoundException
 from typing import Dict, List, Union, Optional, Tuple
 from collections import defaultdict
 import pandas as pd
-import regex as re
+import re
 from bs4 import BeautifulSoup
 from bs4.element import Tag
-import parse_liquipedia_wc
+from ggpyscraper.parse_liquipedia import parse_liquipedia_wc
 
 
 def parse_bracket_recursive_html(

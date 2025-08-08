@@ -27,9 +27,9 @@ import warnings
 import mwparserfromhell as mw
 from bs4 import BeautifulSoup
 from bs4.element import Tag
-import regex as re
+import re
 import pandas as pd
-from parse_liquipedia import parse_liquipedia_wc
+from ggpyscraper.parse_liquipedia import parse_liquipedia_wc
 T = TypeVar('T', bound='LiquipediaPage')
 class UnknownParsingMethodException(Exception):
     """Exception raised when the parsing method is not html or wikicode"""

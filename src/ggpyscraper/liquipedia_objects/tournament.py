@@ -28,10 +28,9 @@ import pandas as pd
 
 from bs4 import BeautifulSoup
 from bs4.element import Tag
-from parse_liquipedia import parse_liquipedia_html, parse_liquipedia_wc
-from liquipedia_objects.liquipedia_page import LiquipediaPage
-
-class Tournament(LiquipediaPage):
+from ggpyscraper.parse_liquipedia import parse_liquipedia_html, parse_liquipedia_wc
+from ggpyscraper.liquipedia_objects import liquipedia_page
+class Tournament(liquipedia_page.LiquipediaPage):
     """
     A class to represent a tournament
 

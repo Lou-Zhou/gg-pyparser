@@ -23,10 +23,10 @@ import re
 import pandas as pd
 from bs4 import BeautifulSoup
 import mwparserfromhell as mw
-from parse_liquipedia import parse_liquipedia_html, parse_liquipedia_wc
-from liquipedia_objects.liquipedia_page import LiquipediaPage
+from ggpyscraper.parse_liquipedia import parse_liquipedia_html, parse_liquipedia_wc
+from ggpyscraper.liquipedia_objects import liquipedia_page
 ParsedValue = Union[str, pd.DataFrame, List[Dict[str, str]]]
-class Team(LiquipediaPage):
+class Team(liquipedia_page.LiquipediaPage):
     """
     A class to represent a liquipedia page.
 

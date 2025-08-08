@@ -20,7 +20,7 @@ CouldNotReadJsonException
 
 """
 from typing import Callable, Dict, List, Union
-import regex as re
+import re
 import mwparserfromhell as mw
 import pandas as pd
 import numpy as np
