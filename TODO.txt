@@ -10,10 +10,10 @@ BUGS TO FIX:
     - For future events, this regex can sometimes false positive onto other labels(e.g. <-- August 23, 2025 -->)
     - Obvious solution is to hardcode the terms "final", "stage", "match", etc but that is a really stupid way imo 
     - Need to find a better solution to find proper titles
+
     
 
 NEW FEATURES:
-1. Ensure that html parsing and wc parsing give the same(as much as possible) data structure output
-2. For multi-stage tournaments(e.g. majors) - parsing the other stages when calling the original tournament - maybe using pipe operator to get multiple stages in one request
-    - I'm not sure its possible to parse this from the wc 
-3. Other Games
+1. Cleaning current code
+2. Begin Work with other games
+3. Make the wc and html outputs as much alike as possible - this can be difficult at times as there sometimes exist data in the wikicode which does not exist in the html

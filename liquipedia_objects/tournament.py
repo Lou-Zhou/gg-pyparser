@@ -1,23 +1,75 @@
-import mwparserfromhell as mw
-import parse_liquipedia
-import parse_liquipedia_html
-import pandas as pd
+"""
+Module for representing and extracting information about a tournament.
+
+Defines the Tournament class, provides
+methods to fetch and parse tournament data like the prize pool
+
+Classes
+-------
+Tournament
+    Represents an individual tournament and provides methods to extract structured information
+    about the competition
+
+Dependencies
+------------
+- BeautifulSoup
+- pandas
+- re
+- mwparserfromhell: For parsing MediaWiki markup.
+- parse_liquipedia, parse_liquipedia_html, Custom modules for parsing specific data blocks.
+- LiquipediaPage: Base class for interacting with Liquipedia.
+
+"""
+from typing import List, Union
+import warnings
 import re
-from LiquipediaPage import LiquipediaPage
-from parse_liquipedia import SectionNotFoundException
+import mwparserfromhell as mw
+import pandas as pd
+
 from bs4 import BeautifulSoup
 from bs4.element import Tag
-
-
+from parse_liquipedia import parse_liquipedia_html, parse_liquipedia_wc
+from liquipedia_objects.liquipedia_page import LiquipediaPage
 
 class Tournament(LiquipediaPage):
-    def __init__(self, game, name, user="initial python testing(github.com/louzhou)", throttle=0, action = "query"):
-        super().__init__(game, name, user=user, throttle=throttle, action = action)
-        
-    def get_info(self, infobox_name = "Infobox league"): 
-        return super().get_info(infobox_name)
+    """
+    A class to represent a tournament
 
-    def _get_matches_wc(self):
+
+    Methods
+    -------
+    get_info(infobox_name = "Infobox team")
+        Parses information from tournament's infobox
+    get_results()
+        Get tournament results
+    get_participants()
+        Get all participants
+    get_talent()
+        Get all talent
+    get_prizes()
+        Get the tournament's prize pool
+    """
+    def __init__(self, game : str, name : str,
+                 user : str="initial python testing(github.com/louzhou)",  action : str = "query"
+                 ) -> None:
+        """
+        Creates a tournament object
+
+        Parameters
+        ----------
+        game: str
+            The game being played
+        name: str
+            The page name, found by liquipedia.com/game/(name)
+        user: str
+            The user, as requested by liquipedia ToS
+        action: str
+            Whether html(action = "parse") or wikicode(action = "query") parsing should occur
+        """
+        super().__init__(game, name, user=user, action = action)
+
+    def _get_matches_wc(self) -> pd.DataFrame:
+        """A private function to parse matches with wikicode"""
         sections = []
         parses = []
         str_parsed = mw.parse(self.raw_str)
@@ -25,57 +77,48 @@ class Tournament(LiquipediaPage):
         results_sections = ['results'] if "results" in headings else ["group stage", "playoffs"]
         for section in str_parsed.get_sections(include_lead=False, include_headings=True):
             #exists probably a cleaner solution to find relevant headers
-            heading = section.filter_headings()[0].title.strip().lower() 
+            heading = section.filter_headings()[0].title.strip().lower()
             #find all results sections
-            
-            
             if heading in results_sections:
                 #results = section.get_sections(include_lead=False, include_headings=False)
-                
                 parse = mw.parse(section)
-                
                 parses.append(parse) #incase of multiple "results" sections
-
         games_df = []
         #for all the results sections
         for parse in parses:
             sections = parse.get_sections(include_lead=False, include_headings=True)
-
             # Handle single-section tournaments (no subsections)
             if not sections:
                 stage = "playoffs" if "Bracket" in parse else "group_stage"
-                new_games = parse_liquipedia.parse_game_groups(stage, [parse], self.game)
+                new_games = parse_liquipedia_wc.parse_games(stage, [parse], self.game)
                 new_games['stage_group'] = stage
                 games_df.append(new_games)
                 continue
-
             seen_stages = []
-            lowest_sections = parse_liquipedia.get_lowest_subsections(parse)
-            
+            lowest_sections = parse_liquipedia_wc.get_lowest_subsections(parse)
             for lowest in lowest_sections:
-
-                stage = lowest.filter_headings()[0].title.strip().lower() 
+                stage = lowest.filter_headings()[0].title.strip().lower()
                 if str(lowest) in seen_stages or "{{Match" not in str(lowest):
                     continue
                 seen_stages.append(str(lowest))
-
                 match = re.search(r"\{\{[^|]+\|([^}]+)\}\}", stage, re.I)
                 if match:
                     stage = match.group(1).strip().lower()
-
                 info = lowest.get_sections(include_lead=False, include_headings=False)
-                new_games = parse_liquipedia.parse_game_groups(stage, info, self.game)
+                new_games = parse_liquipedia_wc.parse_games(stage, info, self.game)
                 new_games['stage_group'] = stage
                 games_df.append(new_games)
         if len(games_df) == 0:
-            raise SectionNotFoundException("Could not find the results section on the page, ensure that the page has a results" \
-            " section. If this tournament has stages, it is likely that the results section is in the stage pages")
+            raise parse_liquipedia_wc.SectionNotFoundException(
+            "Could not find the results section on the page, " \
+            "ensure that the page has a results" \
+            " section. If this tournament has stages, " \
+            "it is likely that the results section is in the stage pages")
         matches = pd.concat(games_df, ignore_index=True)
-        
         return matches
-    
-    def _get_matches_html(self):
-        #get matchlists
+
+    def _get_matches_html(self) -> pd.DataFrame:
+        """A private function to parse matches with html"""
         souped = BeautifulSoup(self.get_raw_str(), "html.parser")
         matchlists = souped.select(
         "div.general-collapsible.brkts-matchlist"
@@ -84,7 +127,8 @@ class Tournament(LiquipediaPage):
         for matchlist in matchlists:
             header = matchlist.find_previous(["h1", "h2", "h3", "h4", "h5", "h6"])
             header = header.get_text().split("[")[0] if header else None
-            title = matchlist.select("div.brkts-matchlist-title")[0].get_text().replace(" Show Hide", "")
+            title = matchlist.select(
+                "div.brkts-matchlist-title")[0].get_text().replace(" Show Hide", "")
             matches = matchlist.find_all("div", class_ = "brkts-popup brkts-match-info-popup")
             for match in matches:
                 parsed = parse_liquipedia_html.parse_match_html(match)
@@ -93,52 +137,58 @@ class Tournament(LiquipediaPage):
                 all_matches.append(parsed)
         #parse brackets
         brackets = souped.select('div[class="brkts-bracket"]')
-        for round in brackets:
-            header = round.find_previous(["h1", "h2", "h3", "h4", "h5", "h6"])
+        for b_round in brackets:
+            header = b_round.find_previous(["h1", "h2", "h3", "h4", "h5", "h6"])
             header = header.get_text().split("[")[0] if header else None
-            subround_names = round.select('div[class="brkts-header brkts-header-div"]')
-
-        
-            subbrackets = round.find_all("div", class_="brkts-round-body", recursive = False)
+            subround_names = b_round.select('div[class="brkts-header brkts-header-div"]')
+            subbrackets = b_round.find_all("div", class_="brkts-round-body", recursive = False)
             for subbracket in subbrackets:
                 closest_header = subbracket.find_previous("div", class_="brkts-round-header")
-                subround_names = [subround_name.contents[0] for subround_name in closest_header]
-                subround_names = [name for name in subround_names if str(name).lower().strip() != "qualified"]
-                output = parse_liquipedia_html.parse_bracket_recursive_html(subbracket, subround_names)
+                subround_names = [subround_name.contents[0]
+                                  for subround_name in closest_header]
+                subround_names = [name for name in subround_names
+                                  if str(name).lower().strip() != "qualified"]
+                output = parse_liquipedia_html.parse_bracket_recursive_html(
+                    subbracket, subround_names)
                 for sub_round, body in output.items():
                     for match in body:
                         parsed = parse_liquipedia_html.parse_match_html(match)
                         parsed['stage'] = header
                         parsed['substage'] = sub_round
                         all_matches.append(parsed)
-        #get single matches(mostly showmatches or grand-finals where the finalists are weirdly determined)
-        single_matches = souped.find_all("div", class_ = "brkts-popup brkts-popup brkts-match-info-flat")
+        #get single matches(mostly showmatches or
+        #grand-finals where the finalists are weirdly determined)
+        single_matches = souped.find_all(
+            "div", class_ = "brkts-popup brkts-popup brkts-match-info-flat")
         for match in single_matches:
             header = match.find_previous("span", class_="mw-headline").get_text()
             parsed = parse_liquipedia_html.parse_match_html(match)
             parsed['stage'] = header
             parsed['substage'] = header
             all_matches.append(parsed)
+        if len(all_matches) == 0:
+            raise parse_liquipedia_wc.SectionNotFoundException("No matches found")
+        all_matches = pd.concat(all_matches)
+        if all_matches.shape[0] == 0:
+            warnings.warn("Found a Matches Section but no actual match data was found. " \
+            "If this tournament has not started yet this is expected.")
+            #TODO: for future tournaments, still return structure of tournament
+        return all_matches
 
-
-        if len(all_matches) > 0:
-            return pd.concat(all_matches)
-        raise SectionNotFoundException("No matches found")
-
-    def get_results(self, results_name = None):
-        raise AttributeError("")
-
-    def get_matches(self):
+    def get_results(self) -> pd.DataFrame:
+        """Gets the results of a tournament"""
         if self.action == "query":
             return self._get_matches_wc()
         return self._get_matches_html()
-    
-    def get_participants(self):
+
+    def get_participants(self) -> pd.DataFrame:
+        """Gets the participants of a tournament"""
         if self.action == "query":
             return self._get_participants_wc()
         return self._get_participants_html()
-    
-    def _get_participants_html(self):
+
+    def _get_participants_html(self) -> pd.DataFrame:
+        """Private function to get participants with html parsing"""
         raw_str = BeautifulSoup(self.get_raw_str(), "html.parser")
         participants = []
         for team in raw_str.find_all("div", class_ = "teamcard toggle-area toggle-area-1"):
@@ -146,10 +196,10 @@ class Tournament(LiquipediaPage):
             header = team.find_previous(["h1", "h2", "h3", "h4", "h5", "h6"])
             header = header.get_text().split("[")[0] if header else None
             team_dict['name'] = team.find("center").get_text() if team.find("center") else None
-            nums = team.find("table", class_ = "wikitable wikitable-bordered list active").find_all("tr")
-
-
-            team_dict['qualification'] = team.find("td", class_ = "teamcard-qualifier").get_text() if team.find("td", class_ = "teamcard-qualifier") else None
+            nums = team.find("table",
+                            class_ =  "wikitable wikitable-bordered list active").find_all("tr")
+            team_dict['qualification'] = (qual := team.find("td",
+                                        class_="teamcard-qualifier")) and qual.get_text()
             team_dict['stage_enter'] = header
 
             for num in nums:
@@ -157,64 +207,69 @@ class Tournament(LiquipediaPage):
                 team_dict[f"p{text[0]}"] = text[1]
             participants.append(team_dict)
         if len(participants) == 0:
-            raise SectionNotFoundException("Could not find participants section")
+            raise parse_liquipedia_wc.SectionNotFoundException(
+                "Could not find participants section")
         return pd.DataFrame(participants)
-        
 
-    def _get_participants_wc(self):
-        team_dfs = []    
+    def _get_participants_wc(self) -> pd.DataFrame:
+        """Private function to get participants with wikicode parsing"""
+        team_dfs = []
         str_parsed = mw.parse(self.raw_str)
         for section in str_parsed.get_sections(include_lead=False, include_headings=True):
             heading = section.filter_headings()[0].title.strip().lower()
             if heading == "participants":
                 #if multiple subsections of teams
-                lowest_section = parse_liquipedia.get_lowest_subsections(section)
+                lowest_section = parse_liquipedia_wc.get_lowest_subsections(section)
                 for lowest in lowest_section:
-                    participant_stage = lowest.filter_headings()[0].title.strip().lower() 
+                    participant_stage = lowest.filter_headings()[0].title.strip().lower()
                     pattern = r"\{\{[Tt]eam[Cc]ard(?=\n|\|).*?\}\}"
                     teams = re.findall(pattern, str(lowest), re.DOTALL)
-                    #TODO: add notes parsing
                     for team in teams:
-                        team_series = parse_liquipedia.parseTeam(team)
+                        team_series = parse_liquipedia_wc.parse_team(team)
                         team_series['intro_stage'] = participant_stage
                         team_dfs.append(team_series)
         if len(team_dfs) == 0:
-            raise SectionNotFoundException("Could not find participants section on the page, ensure that the page has a participants" \
-            " section. If this is a stage of a larger tournament, it is likely that the participants section is in the tournament overview")
+            raise parse_liquipedia_wc.SectionNotFoundException("Could not find participants " \
+            "section on the page, ensure that the page has a participants" \
+            " section. If this is a stage of a larger tournament, it is likely " \
+            "that the participants section is in the tournament overview")
         team_dfs = pd.concat(team_dfs, axis = 1).T
         team_dfs.loc[:,'intro_stage'] = team_dfs['intro_stage'].str.strip("=")
         return team_dfs
-    
-    def get_talent(self):
-        if self.action == "query": return self._get_talent_wc()
-        return self._get_talent_html()
-    
-  
 
-    def _get_talent_html(self):
+    def get_talent(self) -> pd.DataFrame:
+        """Gets the talent of a tournament"""
+        if self.action == "query":
+            return self._get_talent_wc()
+        return self._get_talent_html()
+
+    def _get_talent_html(self) -> pd.DataFrame:
+        """Private function to get participants with html parsing"""
             #no explitict talent section in html, have to scan for ids
         souped = BeautifulSoup(self.get_raw_str(), "html.parser")
         all_talent = []
-        talent_section = talent_span.parent if (talent_span := souped.find("span", {"id": "Broadcast_Talent"})) else None
+        talent_section = talent_span.parent if (talent_span :=
+                                souped.find("span", {"id": "Broadcast_Talent"})) else None
         #could change depending on title, look in the future
-        talent_container = talent_section.find_all("div", class_="tabs-content") if talent_section else None
+        talent_container = talent_section.find_all("div",
+                                    class_="tabs-content") if talent_section else None
         template_boxes = []
         if not talent_container:
             talent_container = talent_section.find_next_sibling("div") if talent_section else None
         if isinstance(talent_container, Tag):
-                template_boxes = [
-                        box for box in talent_container.find_all("div", class_="template-box")
-                        if not box.find("div", class_="template-box")  # deepest level check
-                    ] + [box for box in talent_container.find_all("ul")]    
+            template_boxes = [
+                    box for box in talent_container.find_all("div", class_="template-box")
+                    if not box.find("div", class_="template-box")  # deepest level check
+            ] + [box for box in talent_container.find_all("ul")]
         if not template_boxes and talent_section:
             template_boxes = list(filter(None, [talent_section.find_next("ul")]))
         for role_box in template_boxes:
             role_title = role_box.find("b")
             if role_title:
                 if not isinstance(role_box, Tag) or not isinstance(role_title, Tag):
-                    raise Exception("Unable to parse role box, not a bs4 Tag")
+                    raise parse_liquipedia_wc.SectionNotFoundException(
+                        "Unable to parse role box, not a bs4 Tag")
                 role_name = role_title.get_text(strip=True).rstrip(":")
-                
                 for li in role_box.find_all("li"):
                     text = li.get_text().split("\n")
                     if len(text) > 1:
@@ -230,14 +285,25 @@ class Tournament(LiquipediaPage):
                     talent_roles["role"] = role_name
                     all_talent.append(talent_roles)
         if len(all_talent) == 0:
-            raise SectionNotFoundException("Could not find talent section")
-        return pd.DataFrame(all_talent).drop_duplicates(subset="fullname", keep='last', inplace=False) 
+            raise parse_liquipedia_wc.SectionNotFoundException("Could not find talent section")
+        all_talent = pd.DataFrame(all_talent)
+        if "fullname" in all_talent.columns:
+            #band-aid fix since the talent can be sometimes be parsed multiple times
+            #this usually happens with tournaments with different stages and
+            # if the talent section a mix of tabs and non-tabs
+            return all_talent.drop_duplicates(subset="fullname", keep='last', inplace=False)
+        all_talent = all_talent.drop_duplicates(subset = "role", inplace = False)
+        if len(all_talent.columns) == 1:
+            #if not announced, manually fill with TBA
+            #this might cause some side-effects tho, so look out in future
+            all_talent['fullname'] = "TBA"
+        return all_talent
 
 
 
 
-
-    def _get_talent_wc(self):
+    def _get_talent_wc(self) -> pd.DataFrame:
+        """Private function to get participants with wikicode parsing"""
         talent_stage = 1
         broadcast_df = []
         str_parsed = mw.parse(self.raw_str)
@@ -248,32 +314,42 @@ class Tournament(LiquipediaPage):
                 pattern = r"\{\{[Bb]roadcasterCard.*?\}\}"
                 roles = re.findall(pattern, str(parse), re.DOTALL)
                 for role in roles:
-                    role_df = parse_liquipedia.parseBroadcaster(role)
+                    role_df = parse_liquipedia_wc.parse_talent(role)
                     role_df['talent_stage'] = talent_stage
                     broadcast_df.append(role_df)
                 talent_stage += 1
         if len(broadcast_df) == 0:
-            raise SectionNotFoundException("Could not find talent section on the page, ensure that the page has a talent" \
-            "section. If this is a stage of a larger tournament, it is likely that the talent section is in the tournament overview")
+            raise parse_liquipedia_wc.SectionNotFoundException(
+            "Could not find talent section on the page," \
+            " ensure that the page has a talent" \
+            "section. If this is a stage of a larger tournament, " \
+            "it is likely that the talent section is in the tournament overview")
         return pd.concat(broadcast_df)
-        #because of ul and div mixing for talent, we need to do both which leads to double counting occassionally
+        #because of ul and div mixing for talent,
+        #we need to do both which leads to double counting occassionally
         #might be a fix but seems difficult without sacrificing not counting some
-    
-    def get_prizes(self):
-        if self.action == "query": return self._get_prizes_wc
+
+    def get_prizes(self) -> Union[List[pd.DataFrame], pd.DataFrame]:
+        """Gets the prize pool for a tournament"""
+        if self.action == "query":
+            return self._get_prizes_wc()
         return self._get_prizes_html()
 
-    def _get_prizes_html(self):
+    def _get_prizes_html(self) -> Union[List[pd.DataFrame], pd.DataFrame]:
+        """Private function to get prize pool with html parsing"""
         souped = BeautifulSoup(self.get_raw_str(), "html.parser")
-        prize_pools = souped.find_all("div", class_ = "csstable-widget collapsed general-collapsible prizepooltable")
+        prize_pools = souped.find_all("div",
+                    class_ = "csstable-widget collapsed general-collapsible prizepooltable")
         df_list = []
         for prize_pool in prize_pools:
             header = prize_pool.find("div", class_ = "csstable-widget-row prizepooltable-header")
-            headers = [h.get_text(strip=True).lower() for h in header.select(".csstable-widget-cell")] 
+            headers = [h.get_text(strip=True).lower() for h in
+                       header.select(".csstable-widget-cell")]
             rows = []
 
             col_map = {idx: col_name for idx, col_name in enumerate(headers)}
-            prize_rows = prize_pool.select("div.csstable-widget-row:not(.prizepooltable-header):not(.ppt-toggle-expand)")
+            prize_rows = prize_pool.select(
+            "div.csstable-widget-row:not(.prizepooltable-header):not(.ppt-toggle-expand)")
             for row in prize_rows:
                 row_dict = {}
                 cells = row.select(".csstable-widget-cell")
@@ -293,21 +369,20 @@ class Tournament(LiquipediaPage):
                 rows.append(row_dict)
             df_list.append(pd.DataFrame(rows))
         if len(df_list) == 0:
-            raise SectionNotFoundException("Could not find prizes section")
+            raise parse_liquipedia_wc.SectionNotFoundException("Could not find prizes section")
         return df_list[0] if len(df_list) == 1 else df_list
 
-    def _get_prizes_wc(self):
+    def _get_prizes_wc(self) -> pd.DataFrame:
+        """Private function to get prize pool with wikicode parsing"""
         prizes = []
         str_parsed = mw.parse(self.raw_str)
         for section in str_parsed.get_sections(include_headings= True, include_lead= False):
             heading = section.filter_headings()[0].title.strip().lower()
             if heading == "prize pool":
                 if "prize pool start" in str(section):
-                    prize_df = parse_liquipedia.parse_expanded_prize_pool(section)
+                    prize_df = parse_liquipedia_wc.parse_expanded_prize_pool(str(section))
                 else:
-                    prize_df = parse_liquipedia.parse_prizes(section)
+                    prize_df = parse_liquipedia_wc.parse_prizes(str(section))
                 prizes.append(prize_df)
 
         return pd.concat(prizes)
-   
-    
