@@ -204,4 +204,5 @@ __marimo__/
 
 playground.py
 *.ipynb
-playground/
+notebooks/
+tests/assets/

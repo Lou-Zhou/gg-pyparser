@@ -20,14 +20,15 @@ Dependencies
 Raises
 ------
 UnknownParsingMethodException
-    Raised when the parsing method is not "action" or "query"
+    Raised when the parsing method is not "action" or "wikicode"
 """
 from typing import Dict, Union,Optional, Type, TypeVar, List
+import re
 import warnings
 import mwparserfromhell as mw
 from bs4 import BeautifulSoup
 from bs4.element import Tag
-import re
+
 import pandas as pd
 from ggpyscraper.parse_liquipedia import parse_liquipedia_wc
 T = TypeVar('T', bound='LiquipediaPage')
@@ -48,7 +49,7 @@ class LiquipediaPage:
     user: str
         The user, as requested by liquipedia ToS
     action: str
-        Whether html(action = "parse") or wikicode(action = "query") parsing should occur
+        Whether html(action = "parse") or wikicode(action = "wikicode") parsing should occur
     raw_str: str
         The raw string describing the text of the player's page
 
@@ -61,7 +62,7 @@ class LiquipediaPage:
     """
     def __init__(self, game : str, name : str,
                 user : str = "initial python testing(github.com/louzhou)",
-                action : str= "query") -> None:
+                action : str= "wikicode") -> None:
         """
         Creates a LiquipediaPage object
 
@@ -74,9 +75,12 @@ class LiquipediaPage:
         user: str
             The user, as requested by liquipedia ToS
         action: str
-            Whether html(action = "parse") or wikicode(action = "query") parsing should occur
+            What parsing method should be used:
+                wikicode - for wikicode parsing
+                html_1 - for html parsing using the "parse" action(30s rate limit, reliable)
+                html_2 - for html parsing using the "wikicode" action(2s rate limit, less reliable)
         """
-        if action not in ["query", "parse"]:
+        if action not in ["wikicode", "html"]:
             raise UnknownParsingMethodException("Unknown Parsing Method")
         self.user = user
         self.game = game
@@ -94,7 +98,7 @@ class LiquipediaPage:
         """Makes the API call depending on whether to use html or wikicode parsing"""
         raw_str = list(parse_liquipedia_wc.make_request(self.user,
                                                     self.game,self.name, self.action).values())[0]
-        if self.action == "query":
+        if self.action == "wikicode":
             match = re.search(r"#REDIRECT\s*\[\[(.*?)\]\]", raw_str, flags=re.IGNORECASE)
             if match:
                 #check if redirect is needed
@@ -118,7 +122,7 @@ class LiquipediaPage:
     def get_info(self, infobox_name: str = "Infobox league"
                  ) -> Dict[str, Union[str, pd.DataFrame, List[Dict[str, str]]]]:
         """Gets the information from the page's infobox """
-        if self.action == "query":
+        if self.action == "wikicode":
             return self._get_info_wc(infobox_name)
         return self._get_info_html()
 
@@ -161,6 +165,10 @@ class LiquipediaPage:
                 self.name = infobox_dict['name'] if (self.name is None
                                                      and "name" in infobox_dict) else self.name
                 break
+        if len(infobox_dict) == 0:
+            raise parse_liquipedia_wc.SectionNotFoundException(
+                "Infobox Section not Found, If this is a substage of a larger tournament, " \
+                "the infobox is probably in the tournament page")
         return infobox_dict
     @classmethod
     def from_raw_str(
@@ -169,7 +177,7 @@ class LiquipediaPage:
         game: Optional[str] = None,
         name: Optional[str] = None,
         user: str = "initial python testing(github.com/louzhou)",
-        action: str = "query"
+        action: str = "wikicode"
     ) -> T:
         """Alternate constructor to build a liquipedia page object from the raw text"""
         obj = cls.__new__(cls)
@@ -177,6 +185,7 @@ class LiquipediaPage:
         obj.raw_str = response
         obj.game = game
         obj.name = name
-        if action not in ["query", "action"]:
+        if action not in ["wikicode", "html"]:
             raise UnknownParsingMethodException("Unknown Parsing Method")
+        obj.action = action
         return obj

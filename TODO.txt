@@ -11,9 +11,9 @@ BUGS TO FIX:
     - Obvious solution is to hardcode the terms "final", "stage", "match", etc but that is a really stupid way imo 
     - Need to find a better solution to find proper titles
 
-    
+3. BLAST/Bounty/2025/Spring/Qualifier and other blast events have really unpredictable prize pools
+    - Current bandaid solution only works for consistent spanning
 
 NEW FEATURES:
-1. Cleaning current code
-2. Begin Work with other games
-3. Make the wc and html outputs as much alike as possible - this can be difficult at times as there sometimes exist data in the wikicode which does not exist in the html
+1. Begin Work with other games
+2. Make the wc and html outputs as much alike as possible - this can be difficult at times as there sometimes exist data in the wikicode which does not exist in the html

@@ -44,7 +44,7 @@ class Player(liquipedia_page.LiquipediaPage):
     
     """
     def __init__(self, game :str, name: str,
-                 user: str ="initial python testing(github.com/louzhou)", action : str = "query"
+                 user: str ="initial python testing(github.com/louzhou)", action : str = "wikicode"
                  ) -> None:
         """
         Creates a player object
@@ -58,7 +58,7 @@ class Player(liquipedia_page.LiquipediaPage):
         user: str
             The user, as requested by liquipedia ToS
         action: str
-            Whether html(action = "parse") or wikicode(action = "query") parsing should occur
+            Whether html(action = "parse") or wikicode(action = "wikicode") parsing should occur
         """
         super().__init__(game, name, user=user, action = action)
 
@@ -78,7 +78,7 @@ class Player(liquipedia_page.LiquipediaPage):
             Dict[str, str]
                 A dictionary describing the contents of the infobox
         """
-        if self.action == "query":
+        if self.action == "wikicode":
             return self._get_info_wc(infobox_name = infobox_name)
         return self._get_info_html()
 
@@ -117,7 +117,7 @@ class Player(liquipedia_page.LiquipediaPage):
             Dict[str, str]
                 A dictionary describing the contents of the infobox
         """
-        info_dict =  super().get_info(infobox_name)
+        info_dict =  super()._get_info_wc(infobox_name)
         if 'team_history' in info_dict and isinstance(info_dict['team_history'], str):
             info_dict['team_history'] = parse_liquipedia_wc.parse_player_team_history(
                 info_dict['team_history'])
@@ -134,7 +134,7 @@ class Player(liquipedia_page.LiquipediaPage):
             Dict[str, pd.DataFrame]
                 A dictionary mapping gear to the contents of each gear section
         """
-        if self.action == "query":
+        if self.action == "wikicode":
             return self._get_gear_wc()
         return self._get_gear_html()
 
@@ -197,8 +197,8 @@ class Player(liquipedia_page.LiquipediaPage):
             Either a list of dataframes, dictionaries mapping 
             headers to dataframes or just a dataframe describing the achievements section
         """
-        if self.action == "query":
+        if self.action == "wikicode":
             raise parse_liquipedia_wc.SectionNotFoundException(
-                "Cannot parse achievements section using action = query, try action = parse")
+                "Cannot parse achievements section using a wikicode parse, try html parse")
         return parse_liquipedia_html.parse_achievements(BeautifulSoup(
             self.get_raw_str(),"html.parser"))

@@ -21,6 +21,7 @@ Dependencies
 
 """
 from typing import List, Union
+from collections import defaultdict
 import warnings
 import re
 import mwparserfromhell as mw
@@ -49,7 +50,7 @@ class Tournament(liquipedia_page.LiquipediaPage):
         Get the tournament's prize pool
     """
     def __init__(self, game : str, name : str,
-                 user : str="initial python testing(github.com/louzhou)",  action : str = "query"
+                 user : str="initial python testing(github.com/louzhou)",  action : str = "wikicode"
                  ) -> None:
         """
         Creates a tournament object
@@ -63,7 +64,7 @@ class Tournament(liquipedia_page.LiquipediaPage):
         user: str
             The user, as requested by liquipedia ToS
         action: str
-            Whether html(action = "parse") or wikicode(action = "query") parsing should occur
+            Whether html(action = "parse") or wikicode(action = "wikicode") parsing should occur
         """
         super().__init__(game, name, user=user, action = action)
 
@@ -176,13 +177,13 @@ class Tournament(liquipedia_page.LiquipediaPage):
 
     def get_results(self) -> pd.DataFrame:
         """Gets the results of a tournament"""
-        if self.action == "query":
+        if self.action == "wikicode":
             return self._get_matches_wc()
         return self._get_matches_html()
 
     def get_participants(self) -> pd.DataFrame:
         """Gets the participants of a tournament"""
-        if self.action == "query":
+        if self.action == "wikicode":
             return self._get_participants_wc()
         return self._get_participants_html()
 
@@ -238,7 +239,7 @@ class Tournament(liquipedia_page.LiquipediaPage):
 
     def get_talent(self) -> pd.DataFrame:
         """Gets the talent of a tournament"""
-        if self.action == "query":
+        if self.action == "wikicode":
             return self._get_talent_wc()
         return self._get_talent_html()
 
@@ -330,7 +331,7 @@ class Tournament(liquipedia_page.LiquipediaPage):
 
     def get_prizes(self) -> Union[List[pd.DataFrame], pd.DataFrame]:
         """Gets the prize pool for a tournament"""
-        if self.action == "query":
+        if self.action == "wikicode":
             return self._get_prizes_wc()
         return self._get_prizes_html()
 
@@ -350,21 +351,39 @@ class Tournament(liquipedia_page.LiquipediaPage):
             prize_rows = prize_pool.select(
             "div.csstable-widget-row:not(.prizepooltable-header):not(.ppt-toggle-expand)")
             for row in prize_rows:
-                row_dict = {}
+                row_dict = defaultdict(list)
                 cells = row.select(".csstable-widget-cell")
                 teams = row.find_all("div", class_ = "block-team")
                 teams =  [team.get_text() for team in teams]
                 #print(teams)
+                #queue to track spans
+
                 current_idx = 0
+                span_idx = 0
+                non_spans = []
+                #check for spans
+                spans = [cell for cell in cells if cell.get("style") and
+                          "span" in cell.get("style") and
+                          int(re.search(r"span (\d+)", cell["style"]).group(1)) > 1]
 
                 for cell in cells:
-                    if not cell.find("div", class_="block-team"):
+                    if len(spans) > 0 and (not cell.get("style") or "span"
+                                           not in cell.get("style")) and current_idx < len(col_map):
+                        non_spans.append(current_idx)
+                    if current_idx >= len(col_map):
+                        new_idx = non_spans[span_idx %
+                                            len(non_spans)] if len(non_spans) > 0 else new_idx
+                        span_idx += 1
+                        colname = col_map[new_idx]
+                        row_dict[colname].append(cell.get_text(strip=True))
+                    #print(cell)
+                    else:
                         colname = col_map[current_idx]
-                        row_dict[colname] = cell.get_text(strip=True)
-                    current_idx += 1
+                        row_dict[colname].append(cell.get_text(strip=True))
+                        current_idx += 1
                     #colname = col_map[idx]
                     #print(cell.get_text())
-                row_dict["teams"] = teams
+                row_dict = {k: v[0] if len(v) == 1 else v for k, v in row_dict.items()}
                 rows.append(row_dict)
             df_list.append(pd.DataFrame(rows))
         if len(df_list) == 0:

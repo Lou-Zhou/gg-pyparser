@@ -20,10 +20,10 @@ CouldNotReadJsonException
 
 """
 from typing import Callable, Dict, List, Union
+from collections import defaultdict
 import re
 import mwparserfromhell as mw
 import pandas as pd
-import numpy as np
 import requests
 
 class SectionNotFoundException(Exception):
@@ -55,7 +55,8 @@ def make_request(user: str, game: str, page_name: str, action: str) -> Dict[str,
             A mapping between the page name and the result of the request
 
     """
-
+    action_map = {'wikicode': 'query', 'html': 'parse'}
+    api_action = action_map.get(action)
     headers = {
             "User-Agent": user,
             "Accept-Encoding": "gzip"
@@ -63,16 +64,16 @@ def make_request(user: str, game: str, page_name: str, action: str) -> Dict[str,
 
     try:
         request_params={
-                "action": action,
+                "action": api_action,
                 "format": "json"
             }
-        if action == "query":
+        if api_action == 'parse':
+            request_params['page'] = page_name
+        else:
             request_params["rvprop"] =  "content"
             request_params['rvslots'] = 'main'
             request_params['titles'] = page_name
             request_params['prop'] = 'revisions'
-        else:
-            request_params['page'] = page_name
         response = requests.get(
             f"https://liquipedia.net/{game}/api.php",
             headers=headers,
@@ -81,18 +82,19 @@ def make_request(user: str, game: str, page_name: str, action: str) -> Dict[str,
         )
         response.raise_for_status()
         try:
-            if action == "query":
+            if action  == 'wikicode':
                 response = response.json()['query']['pages']
-                output_map = {}
+                page_to_str = {}
                 for page in response.values():
                     title = page['title']
                     raw_str = page['revisions'][0]['slots']['main']['*']
-                    output_map[title.lower().strip().replace(" ", "_")] = raw_str
-                return output_map
-            response = response.json()['parse']
-            title = response['title']
-            raw_str = response['text']['*']
-            page_to_str = {title.lower().strip().replace(" ", "_"): raw_str}
+                    page_to_str[title.lower().strip().replace(" ", "_")] = raw_str
+
+            else:
+                response = response.json()['parse']
+                title = response['title']
+                raw_str = response['text']['*']
+                page_to_str = {title.lower().strip().replace(" ", "_"): raw_str}
             return page_to_str
 
         except KeyError as e:
@@ -409,34 +411,29 @@ def parse_talent(text:str) -> pd.DataFrame:
     })
 def parse_prizes(text:str) -> pd.DataFrame:
     """Parses prize information for a tournament"""
-    slots_raw = re.findall(r"\{\{Slot\|([^}]*)\}\}", str(text))
-
-    #slots = [(slot.split("=")[0], slot.split("=")[1]) for slot in slots]
-    slots_tuples = [
-        re.findall(r"(\w+)=([^|]+)", slot)  # captures key and value
-        for slot in slots_raw
-    ]
-    match = re.findall(r"(qualifies\d+name)=([^\|}]+)", str(text))
-    #build maping of future qualifying events
-    qualifications = {re.sub(r"qualifies(\d+)name", r"qualified\1", k): v.strip() for k, v in match}
-    qualifications.update({"none":None})
-    dict_rows = []
-    for pairs in slots_tuples:
-        slot_dict = dict(pairs)
-        for key in list(slot_dict.keys()):
-            if re.match(r"qualified\d+", key):
-                slot_dict["qualifying"] = key
-                slot_dict.pop('key', None)
-
-        if "qualifying" not in slot_dict:
-            slot_dict["qualifying"] = "none"
-
-        dict_rows.append(slot_dict)
-    df = pd.DataFrame(dict_rows)
-    df['qualifying'] = df['qualifying'].map(qualifications)
-    df['count'] = df['count'].fillna(1) if "count" in dict_rows else 0
-    df['teams'] = np.empty((len(df), 0)).tolist()
-    return df
+    wikicode = mw.parse(text)
+    slots = [t for t in wikicode.filter_templates()
+         if t.name.strip().lower() == "slot"]
+    all_prizes = []
+    for slot in slots:
+        str_slot = str(slot)
+        str_slot= re.sub(r"^\s*\{\{[^|]+?\|", "", str_slot.strip(), flags=re.DOTALL)
+        str_slot = re.sub(r"\}\}\s*$", "", str_slot, flags=re.DOTALL)
+        pairs = re.findall(r"(\w+)\s*=\s*((?:.|\n)*?)(?=\n?\|\w+\s*=|$)", str_slot)
+        result_dict = defaultdict(list)
+        for key, value in pairs:
+            value = value.strip("{} \n\t")
+            if len(value) > 0 and value.lower() != "opponent":
+                #very specific hardcode for edge case, don't like
+                result_dict[key].append(value)
+        result_dict = {k: v[0] if len(v) == 1 else v for k, v in result_dict.items()}
+        all_prizes.append(result_dict)
+    if len(all_prizes) == 0:
+        raise SectionNotFoundException("No prize information found")
+    all_prizes = pd.DataFrame(all_prizes)
+    if "count" in all_prizes.columns:
+        all_prizes['count'] = all_prizes['count'].fillna(1)
+    return all_prizes
 
 def parse_expanded_prize_pool(text:str) -> pd.DataFrame:
     """Parses the expanded Liquipedia version of the prize pool"""

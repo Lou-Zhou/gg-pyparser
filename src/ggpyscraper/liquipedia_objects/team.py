@@ -45,7 +45,7 @@ class Team(liquipedia_page.LiquipediaPage):
         Get both the achievements and recent matches for a team
     """
     def __init__(self, game, name, user="initial python testing(github.com/louzhou)",
-                  action = "query"):
+                  action = "wikicode"):
         """
         Creates a Team object
 
@@ -58,7 +58,7 @@ class Team(liquipedia_page.LiquipediaPage):
         user: str
             The user, as requested by liquipedia ToS
         action: str
-            Whether html(action = "parse") or wikicode(action = "query") parsing should occur
+            Whether html(action = "parse") or wikicode(action = "wikicode") parsing should occur
         """
         super().__init__(game, name, user=user, action = action)
     def get_info(self, infobox_name: str = "Infobox team"
@@ -87,7 +87,7 @@ class Team(liquipedia_page.LiquipediaPage):
 
     def get_news(self) -> pd.DataFrame:
         """ Gets the data about a team's news """
-        if self.action == "query":
+        if self.action == "wikicode":
             return self._get_news_wc()
         return self._get_news_html()
 
@@ -120,20 +120,20 @@ class Team(liquipedia_page.LiquipediaPage):
                     entries = text.split("\n")
                     for entry in entries:
                         data = parse_liquipedia_wc.parse_news_str(entry)
-                        if data != -1:
+                        if data != -1 and len(data) > 0:
                             data['year'] = year
                             news_data.append(data)
         return pd.DataFrame(news_data)
 
     def get_players(self) -> Union[pd.DataFrame, Dict[str, pd.DataFrame]]:
         """Gets information about a team's players"""
-        if self.action == "query":
+        if self.action == "wikicode":
             return self._get_people_wc("player roster")
         return self._get_people_html(header = "Player_Roster")
 
     def get_organization(self)  -> Union[pd.DataFrame, Dict[str, pd.DataFrame]]:
         """Gets information about a team's organization"""
-        if self.action == "query":
+        if self.action == "wikicode":
             return self._get_people_wc("organization")
         return self._get_people_html(header = "Organization")
 
@@ -197,11 +197,12 @@ class Team(liquipedia_page.LiquipediaPage):
                     person_dict = parse_liquipedia_wc.parse_person(person)
                     stand_ins.append(person_dict)
         if len(stand_ins) > 0:
-            return {"players": pd.DataFrame(all_people), "stand_ins": pd.DataFrame(stand_ins)}
+            return pd.concat([pd.DataFrame(all_people),
+            pd.DataFrame(stand_ins)])
         return pd.DataFrame(all_people)
     def get_results(self):
         """Parses results section for a team"""
-        if self.action == "query":
+        if self.action == "wikicode":
             raise parse_liquipedia_wc.SectionNotFoundException(
                 "Cannot parse results section using action = query, try action = parse")
 

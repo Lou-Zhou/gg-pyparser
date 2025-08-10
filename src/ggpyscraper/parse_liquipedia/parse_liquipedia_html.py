@@ -54,7 +54,7 @@ def parse_bracket_recursive_html(
     closest_header  = [subround_name.contents[0] for subround_name in closest_header
                        if isinstance(subround_name, Tag)]
     closest_header  = [name for name in closest_header
-                       if str(name).lower().strip() != "qualified" and isinstance(name, Tag)]
+                       if str(name).lower().strip() != "qualified"]
     #recheck headers
     if set(closest_header).isdisjoint(set(subround_names)):
         #no common between original header list and now new closest header list,

@@ -61,11 +61,10 @@ PageTypeRegistry.register("team")(team.Team)
 PageTypeRegistry.register("player")(player.Player)
 
 def create_multiple_pages(game : str,page_names : List[str], page_ts : Union[List[str], str],
-                        user : str ="initial python testing(github.com/louzhou)",
-                        action : str= "query") -> Dict[str, Any]:
+                        user : str ="initial python testing(github.com/louzhou)") -> Dict[str, Any]:
     """
-        Helper function to get many pages in one api call
-
+        Helper function to get many pages in one api call - only wikicode parsing is supported
+        TODO: add html parsing - idk if this is even possible with current api
         Parameters
         ----------
         game: str
@@ -76,8 +75,7 @@ def create_multiple_pages(game : str,page_names : List[str], page_ts : Union[Lis
             Types of pages being parsed
         user: str
             The user, as requested by liquipedia ToS
-        action: str
-            Whether html(action = "parse") or wikicode(action = "query") parsing should occur
+        
         
         Returns
         -------
@@ -86,7 +84,7 @@ def create_multiple_pages(game : str,page_names : List[str], page_ts : Union[Lis
     """
     page_types = page_ts if isinstance(page_ts, list) else [page_ts.lower()] * len(page_names)
     response = parse_liquipedia_wc.make_request(
-            user, game, "|".join(page_names), action
+            user, game, "|".join(page_names), action = "wikicode"
         )
     objects = {}
     for name, ptype in zip(page_names, page_types):
@@ -94,6 +92,6 @@ def create_multiple_pages(game : str,page_names : List[str], page_ts : Union[Lis
         if page_class is None:
             raise ValueError(f"Page class for type '{ptype}' is not registered.")
         raw_str = response[name.lower().strip()]
-        obj = page_class.from_raw_str(raw_str, game, name, user=user, throttle=0)
+        obj = page_class.from_raw_str(raw_str, game, name, user=user, action="wikicode")
         objects[name] = obj
     return objects
