@@ -20,11 +20,11 @@ CouldNotReadJsonException
 
 """
 from typing import Callable, Dict, List, Union
-from collections import defaultdict
 import re
 import mwparserfromhell as mw
 import pandas as pd
 import requests
+
 
 class SectionNotFoundException(Exception):
     """
@@ -150,28 +150,6 @@ def parse_team_name(name : str) -> str:
     """Parses the team name from a wikicode match"""
     return re.search(r"\{\{TeamOpponent\|([^}|]*)", name)[1] # type: ignore
 
-def parse_map(wc: str) -> dict:
-    """
-    Parses the team history for a player in their infobox
-
-    Parameters
-    ----------
-        wc: str
-            A string describing the wikicode of a single map
-
-    Returns
-    -------
-        Dict[str, str]
-            A dictionary mapping describing the data of the map
-
-    """
-
-    wikicode = mw.parse(wc)
-    template = wikicode.filter_templates()[0]
-    map_data = {param.name.strip(): param.value.strip_code().strip() for param in template.params}
-    if len(map_data) == 0:
-        raise SectionNotFoundException(f"No maps were found in {map}")
-    return map_data
 
 def parse_series_data(raw_str: str, regex: str,
                       cleaning_function: Callable = lambda x: x) -> Dict[str, str]:
@@ -195,7 +173,7 @@ def parse_series_data(raw_str: str, regex: str,
     parsed =re.findall(regex, str(raw_str), re.DOTALL)
     return {key: cleaning_function(value) for key, value in parsed}
 
-def parse_series(series_info: str, game: str) -> pd.DataFrame:
+def parse_series(series_info: str) -> pd.DataFrame:
     """
     Parses a series of matches
 
@@ -211,33 +189,28 @@ def parse_series(series_info: str, game: str) -> pd.DataFrame:
         pd.DataFrame
             A dataframe describing information about each map in the series
     """
-    #get games:
-    pattern = r"(map\d+)\s*=\s*(\{\{Map\|.*?\}\})"
-    if game == "dota2":
-        pattern = r"(map\d+)\s*=\s*(\{\{Map\b(?:[^{}]|\{[^{}]*\})*\}\})"
-    matches = re.findall(pattern, str(series_info), re.DOTALL)
-    matches = pd.DataFrame([parse_map(match_data) for match_data in matches])
+    #get games(single maps) -
+    matches = extract_maps(series_info)
 
+    matches = pd.DataFrame(matches)
     #get teams:
     pattern = r"(opponent\d+)\s*=\s*(\{\{TeamOpponent\|.*?\}\})"
     team_names = parse_series_data(series_info, pattern, parse_team_name)
     if len(team_names) == 0:
         return matches
     #get date:
-    pattern = r"(date)=(.+?\{\{Abbr/[A-Z]+\}\})\|"
-    date = parse_series_data(series_info, pattern)
     matches[['opponent_1', 'opponent_2']] = team_names['opponent1'], team_names['opponent2']
-    matches['date'] = date['date'] if 'date' in date else None
-    #game-specific stuff probably changes here
-    if game == 'counterstrike':
-        #get hltv id:
-        pattern = r"(hltv)=([0-9]+)|"
-        hltv_id = parse_series_data(series_info, pattern)
-        matches['hltv_id'] = hltv_id['hltv'] if 'hltv' in hltv_id else None
+    parsed = mw.parse(series_info)
+    match_tpl = next(t for t in parsed.filter_templates(recursive=True)
+                 if t.name.matches("Match"))
+
+    for p in match_tpl.params:
+        if not ("map" in p.name or "opponent" in p.name):
+            matches[str(p.name)] = str(p.value)
     return matches
 
 
-def parse_grouped_games(name:str, info:List[str], game:str) -> List[pd.DataFrame]:
+def parse_grouped_games(name:str, info:List[str]) -> List[pd.DataFrame]:
     """
     Parses games in a group stage setting
 
@@ -247,37 +220,33 @@ def parse_grouped_games(name:str, info:List[str], game:str) -> List[pd.DataFrame
             The name of the stage(e.g. "Group A")
         info: List[str]
             A list of strings describing the wikicode of the grouped games
-        game: str
-            The game being played
-
     Returns
     -------
         List[pd.DataFrame]
             A list of dataframes describing all of the series in the groups
     """
     alldfs = []
-    for subinfo in info:
-        if isinstance(subinfo, str):
-            subinfo = mw.parse(subinfo)
-        for template in subinfo.filter_templates(recursive=True):
-            if template.name.matches("Matchlist") or template.name.matches("SingleMatch"):
-                for subtemplate in template.params:
-                    if "title=" in str(subtemplate):
-                        name = subtemplate.split("=")[1]
-                    if "{{Match" in subtemplate or "{{SingleMatch" in subtemplate:
-                        match_df = parse_series(str(subtemplate), game)
-                        match_df['stage'] = name
-                        alldfs.append(match_df)
+    if isinstance(info, str):
+        info = mw.parse(info)
+    for template in info.filter_templates(recursive=True):
+        if template.name.matches("Matchlist") or template.name.matches("SingleMatch"):
+            for subtemplate in template.params:
+                if "title=" in str(subtemplate):
+                    name = subtemplate.split("=")[1]
+                if "{{Match" in subtemplate or "{{SingleMatch" in subtemplate:
+                    match_df = parse_series(str(subtemplate))
+                    match_df['stage'] = name
+                    alldfs.append(match_df)
     return alldfs
 
-def parse_bracket(info: List[str], game: str) -> List[pd.DataFrame]:
+def parse_bracket(info: str) -> List[pd.DataFrame]:
     """
     Parses games in a bracket stage setting
 
     Parameters
     ----------
-        info: List[str]
-            A list of strings describing wikicode
+        info: string
+            A string describing wikicode
         game: str
             The game being played
 
@@ -287,65 +256,73 @@ def parse_bracket(info: List[str], game: str) -> List[pd.DataFrame]:
             A list of dataframes describing all of the series in the bracket
     """
     alldfs = []
-    for subinfo in info:
-        #first try to get stage name from the RxMxheader
-        regex = (
-            r"(\|R\d+M\d+header=[^\n]+)"  #turn into tuple of (|RxMxheader=name, text)
-            r"(.*?)"                          
-            r"(?=\|R\d+M\d+header=|\Z)"       
-        )
-        #if header declarations are at top, just takes last RxMx
-        # if uses a mixture of two heading styles(header= and <-->, does not work -
-        # see dota2/Esports_World_Cup/2025/North_America
-        if len(re.findall(regex, str(subinfo), re.DOTALL)) > 0:
-            header_regex = r"\|R(\d+)M\d+header=([^\n]+)"
-            #headers_list = re.findall(header_regex, str(subinfo))
-            headers = dict(re.findall(header_regex, str(subinfo)))
-            if len(headers) > 1:
-                #should have multiple headers,
-                for round_num, stage_name in headers.items():
-                    # Find all matches for this round
-                    regex = (
-                            r"\|R" + str(round_num) +
-                            r"M\d+=\s*(\{\{Match.*?\}\})\s*(?=\|R" +
-                            str(round_num) + r"M\d+=|\|R\d+M\d+=|\Z)"
-                        )
-                    round_matches = re.findall(regex, str(subinfo), re.DOTALL)
-                    for match_text in round_matches:
-                        match_df = parse_series(match_text, game)
-                        match_df['stage'] = stage_name
-                        alldfs.append(match_df)
-            else: #if not, parse manually up to down - dealing
-                #with issues where two headers are marked R1 but in different places
-                stages = parse_series_data(subinfo, regex)
-                for stage, text in stages.items():
-                    stage = stage.split("=")[1]
-                    matches = re.split(r'\|R\d+M\d+=', text)
-                    for match in matches:
-                        if "{{Match" in match:
-                            match_df = parse_series(match, game)
-                            match_df['stage'] = stage
-                            alldfs.append(match_df)
-        else:
+    series_idx = 0
 
-            #if fails, look at <!--stage-->
-            #can be situations where <!--x--> is being used as a temporary value for
-            # an event that has not happened yet
-            #i dont like the idea of hardcoding the terms "stage", "match", etc.
-            # but need to find a good way to deal with this TODO
-
-            regex =  r'<!--\s*(.*?)\s*-->\s*(.*?)(?=\s*<!--\s*\w+|$)'
-            stages = parse_series_data(subinfo, regex)
-
+    #first try to get stage name from the RxMxheader
+    regex = (
+        r"(\|R\d+M\d+header=[^\n]+)"  #turn into tuple of (|RxMxheader=name, text)
+        r"(.*?)"                          
+        r"(?=\|R\d+M\d+header=|\Z)"       
+    )
+    #if header declarations are at top, just takes last RxMx
+    # if uses a mixture of two heading styles(header= and <-->, does not work
+    # see dota2/Esports_World_Cup/2025/North_America
+    if len(re.findall(regex, str(info), re.DOTALL)) > 0:
+        #if we're not using comments to parse headers, remove all comments
+        info = re.sub(r"<!--.*?-->", "", str(info), flags=re.DOTALL)
+        header_regex = r"\|R(\d+)M\d+header=([^\n]+)"
+        #remove comments
+        #headers_list = re.findall(header_regex, str(info))
+        headers = dict(re.findall(header_regex, str(info)))
+        if len(headers) > 1:
+            #should have multiple headers,
+            for round_num, stage_name in headers.items():
+                # Find all matches for this round
+                regex = (
+                        r"\|R" + str(round_num) +
+                        r"M\d+=\s*(\{\{Match.*?\}\})\s*(?=\|R" +
+                        str(round_num) + r"M\d+=|\|R\d+M\d+=|\Z)"
+                    )
+                round_matches = re.findall(regex, str(info), re.DOTALL)
+                for match_text in round_matches:
+                    match_df = parse_series(match_text)
+                    match_df['stage'] = stage_name
+                    alldfs.append(match_df)
+        else: #if not, parse manually up to down - dealing
+            #with issues where two headers are marked R1 but in different places
+            stages = parse_series_data(info, regex)
             for stage, text in stages.items():
+                stage = stage.split("=")[1]
                 matches = re.split(r'\|R\d+M\d+=', text)
                 for match in matches:
                     if "{{Match" in match:
-                        match_df = parse_series(match, game)
+                        match_df = parse_series(match)
                         match_df['stage'] = stage
+                        match_df['series_id'] = series_idx
+                        series_idx += 1
                         alldfs.append(match_df)
+    else:
+
+        #if fails, look at <!--stage-->
+        #can be situations where <!--x--> is being used as a temporary value for
+        # an event that has not happened yet - i have hardcoded removing these comments
+        #but this is not a good solution
+        regex =  r'<!--\s*(.*?)\s*-->\s*(.*?)(?=\s*<!--\s*\w+|$)'
+        stages = parse_series_data(remove_non_stage_comments(str(info)), regex)
+        if len(stages) == 0:#no headers found
+            #maybe inferring headers from Bracket/4L2DS?
+            stages = {"bracket": str(info)}
+        for stage, text in stages.items():
+            matches = [t for t in mw.parse(text).filter_templates(recursive=True)
+                    if t.name.matches("Match")]
+            for match in matches:
+                match_df = parse_series(match)
+                match_df['stage'] = stage
+                match_df['series_id'] = series_idx
+                series_idx += 1
+                alldfs.append(match_df)
     return alldfs
-def parse_games(stage, info, game):
+def parse_games(stage, info):
     """
     Determines whether a bracket or grouped based parser should be used
 
@@ -363,10 +340,10 @@ def parse_games(stage, info, game):
         List[pd.DataFrame]
             A list of dataframes describing all the matches found within info
     """
-    if "Bracket" in info[0]:#might be worth doing an any check here
-        new_games =  pd.concat(parse_bracket(info, game))
+    if "Bracket" in info:#might be worth doing an any check here
+        new_games =  pd.concat(parse_bracket(info))
     else:
-        new_games =  pd.concat(parse_grouped_games(stage, info, game))
+        new_games =  pd.concat(parse_grouped_games(stage, info))
     return new_games
 
 def parse_team(text:str) -> pd.Series:
@@ -409,25 +386,42 @@ def parse_talent(text:str) -> pd.DataFrame:
         "language": [language] * len(names),
         "position": [position] * len(names)
     })
-def parse_prizes(text:str) -> pd.DataFrame:
-    """Parses prize information for a tournament"""
-    wikicode = mw.parse(text)
+def parse_prizes(text: mw.parser.Parser,
+                 match_1 = "slot",
+                 match_2 = r"(?i)prizepool") -> pd.DataFrame:
+    """Parses prize information for a tournament
+
+    Parameters
+    ----------
+        text: mw.parser.Parser
+            The parsed containing the prizes to parse
+        match_1 : str
+            The outer template to match
+        match_2 : str
+            The inner template to match
+    Returns
+    -------
+        pd.DataFrame
+            A dataframe describing the prize pool
+    """
+
+    wikicode = text
+    s_m = {}
     slots = [t for t in wikicode.filter_templates()
-         if t.name.strip().lower() == "slot"]
+         if t.name.strip().lower() == match_1]
+    slot_meta_tpls = wikicode.filter_templates(matches=match_2, recursive=False)
+    if slot_meta_tpls:
+        slot_meta = slot_meta_tpls[0]
+        s_m = {str(p.name): str(p.value) for p in slot_meta.params if
+               not str(p.name).strip().isdigit()}
     all_prizes = []
     for slot in slots:
-        str_slot = str(slot)
-        str_slot= re.sub(r"^\s*\{\{[^|]+?\|", "", str_slot.strip(), flags=re.DOTALL)
-        str_slot = re.sub(r"\}\}\s*$", "", str_slot, flags=re.DOTALL)
-        pairs = re.findall(r"(\w+)\s*=\s*((?:.|\n)*?)(?=\n?\|\w+\s*=|$)", str_slot)
-        result_dict = defaultdict(list)
-        for key, value in pairs:
-            value = value.strip("{} \n\t")
-            if len(value) > 0 and value.lower() != "opponent":
-                #very specific hardcode for edge case, don't like
-                result_dict[key].append(value)
-        result_dict = {k: v[0] if len(v) == 1 else v for k, v in result_dict.items()}
-        all_prizes.append(result_dict)
+        slot_data = {}
+        for param in slot.params:
+            val = str(param.value)
+            slot_data[str(param.name)] = val
+        slot_data.update(s_m)
+        all_prizes.append(slot_data)
     if len(all_prizes) == 0:
         raise SectionNotFoundException("No prize information found")
     all_prizes = pd.DataFrame(all_prizes)
@@ -435,34 +429,6 @@ def parse_prizes(text:str) -> pd.DataFrame:
         all_prizes['count'] = all_prizes['count'].fillna(1)
     return all_prizes
 
-def parse_expanded_prize_pool(text:str) -> pd.DataFrame:
-    """Parses the expanded Liquipedia version of the prize pool"""
-    match = re.findall(r"\{\{prize pool slot\b(?:[^{}]|\{\{[^{}]*\}\})*\}\}",
-                    str(text), re.DOTALL | re.IGNORECASE)
-    all_placements = []
-    for placement in match:
-        parts = [p.strip() for p in placement.split("|") if p.strip()]
-
-        data = {}
-        team_names = []
-
-        for part in parts:
-            if "=" in part:
-                key, value = part.split("=", 1)
-                data[key.strip()] = value.strip()
-            else:
-                # Standalone part is likely team name
-                team_name = part.strip()
-                team_names.append(team_name)
-        data['team'] = [team for team in team_names if "{" not in team]
-        data['localprize'] = data['localprize'].strip("[") if 'localprize' in data else None
-        data = {
-                (k.strip("{}") if isinstance(k, str) else k):
-                (v.strip("{}") if  isinstance(v, str) else v)
-                for k, v in data.items()
-            }
-        all_placements.append(data)
-    return pd.DataFrame(all_placements)
 
 def get_name_content_map(text: str) -> Dict[str, str]:
     """Builds a mapping between name(x) and content(x) as described in wikicode"""
@@ -471,6 +437,17 @@ def get_name_content_map(text: str) -> Dict[str, str]:
     #print(text)
     pattern = r"\|content(\d+)=\s*\n(.*?)(?=\n\|content\d+=|\n\|name\d+=|\n\}\})"
     values = dict(re.findall(pattern, text, flags=re.S))
+    if len(values) == 0:
+        pattern = re.compile(r"""
+        \{\{\s*tabs\s+dynamic/tab\s*\|\s*(\d+)\s*\}\}   
+        \s*(?:<!--.*?-->)?\s*                          
+        (.*?)                                          
+        (?=                                            
+            \{\{\s*tabs\s+dynamic/tab\s*\|\s*\d+\s*\}\}
+        | \{\{\s*tabs\s+dynamic/end\s*\}\}          
+        )
+        """, re.IGNORECASE | re.DOTALL | re.VERBOSE)
+        values = dict(pattern.findall(text))
     mapping = {key_mapping[k]: v for k,v in values.items()}
     return mapping
 
@@ -481,10 +458,7 @@ def parse_news_str(raw_str: str) -> Dict[str, Union[str, List[str]]]:
 
     refs = []
     for ref in ref_content:
-        # Find all key=value pairs
         pairs = re.findall(r"(\w+)=([^|}]+)", ref)
-
-        # Build dictionary dynamically
         ref_dict = {k.strip(): v.strip("[ ]") for k, v in pairs}
         refs.append(ref_dict)
 
@@ -528,3 +502,33 @@ def parse_person(text: str) -> Dict[str, str]:
         tournaments = re.findall(r'\[\[[^\]|]+\|([^\]]+)\]\]', person)
         person_dict['tournament'] = tournaments
     return person_dict
+
+
+
+def remove_non_stage_comments(s: str) -> str:
+    """
+    Removes all comments that do not contain stage information
+    """
+    #regex for comments and stage names
+    comment = re.compile(r"<!--\s*(?P<txt>(?:(?!-->).)*?)\s*-->", re.DOTALL)
+    #I hate this hardcoding but idk a better way rn
+    stages = re.compile(r"\b(round|stage|quarterfinals?|semifinals?|final|match|group)\b",
+                         re.IGNORECASE)
+    def keep_only_stage(m: re.Match) -> str:
+        #for all comments, check if it contains a stage word
+        inner = m.group("txt")
+        return m.group(0) if stages.search(inner) else ""
+    return comment.sub(keep_only_stage, s)
+def extract_maps(wikitext):
+    """
+    Extracts maps from the wikitext
+    """
+    code = mw.parse(wikitext)
+    out = []
+    for t in code.filter_templates(recursive=True):
+        if t.name.strip().lower() == "map":
+            params = {str(p.name).strip(): str(p.value).strip() for p in t.params}
+            out.append(params)
+    if len(out) == 2:
+        print("aa")
+    return out

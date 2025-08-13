@@ -1,19 +1,14 @@
 BUGS TO FIX:
 
-1. Intel_Extreme_Masters_2025/Dallas/Europe/Open gives incorrect stage for R64 matches
-    - Probably due to how Rounds are labeled in the page's src - have a group of RxMx headers at the top
-    describing the bracket then for 5-6th place a new R1 header which conflicts with the old R1 headers
-    - I imagine for smaller tournaments, will have more variety with how the src is shaped so more potential for error
-    -   This is fixed with the html parsing but still need to do for wc parsing
-
-2. regex =  r'<!--\s*(.*?)\s*-->\s*(.*?)(?=\s*<!--\s*\w+|$)' in parse_playoff_data
+1. regex =  r'<!--\s*(.*?)\s*-->\s*(.*?)(?=\s*<!--\s*\w+|$)' in parse_liquipedia_wc.parse_bracket
     - For future events, this regex can sometimes false positive onto other labels(e.g. <-- August 23, 2025 -->)
-    - Obvious solution is to hardcode the terms "final", "stage", "match", etc but that is a really stupid way imo 
     - Need to find a better solution to find proper titles
 
-3. BLAST/Bounty/2025/Spring/Qualifier and other blast events have really unpredictable prize pools
+2. BLAST/Bounty/2025/Spring/Qualifier and other blast events have really unpredictable prize pools
     - Current bandaid solution only works for consistent spanning
 
 NEW FEATURES:
-1. Begin Work with other games
-2. Make the wc and html outputs as much alike as possible - this can be difficult at times as there sometimes exist data in the wikicode which does not exist in the html
+1. Make the wc and html outputs as much alike as possible - this can be difficult at times as there sometimes exist data in the wikicode which does not exist in the html
+
+OTHER:
+1. write documentation!

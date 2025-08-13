@@ -74,8 +74,11 @@ class Tournament(liquipedia_page.LiquipediaPage):
         parses = []
         str_parsed = mw.parse(self.raw_str)
         headings = [heading.title.strip().lower()  for heading in str_parsed.filter_headings()]
-        results_sections = ['results'] if "results" in headings else ["group stage", "playoffs"]
-        for section in str_parsed.get_sections(include_lead=False, include_headings=True):
+        results_sections = ['results', "result"] if "results" in headings else ["group stage",
+                                                                      "playoffs", "main event"]
+        for section in str_parsed.get_sections(include_lead=True, include_headings=True):
+            if len(section.filter_headings()) == 0:
+                continue
             #exists probably a cleaner solution to find relevant headers
             heading = section.filter_headings()[0].title.strip().lower()
             #find all results sections
@@ -90,7 +93,7 @@ class Tournament(liquipedia_page.LiquipediaPage):
             # Handle single-section tournaments (no subsections)
             if not sections:
                 stage = "playoffs" if "Bracket" in parse else "group_stage"
-                new_games = parse_liquipedia_wc.parse_games(stage, [parse], self.game)
+                new_games = parse_liquipedia_wc.parse_games(stage, parse)
                 new_games['stage_group'] = stage
                 games_df.append(new_games)
                 continue
@@ -104,21 +107,28 @@ class Tournament(liquipedia_page.LiquipediaPage):
                 match = re.search(r"\{\{[^|]+\|([^}]+)\}\}", stage, re.I)
                 if match:
                     stage = match.group(1).strip().lower()
-                info = lowest.get_sections(include_lead=False, include_headings=False)
-                new_games = parse_liquipedia_wc.parse_games(stage, info, self.game)
-                new_games['stage_group'] = stage
-                games_df.append(new_games)
+                for low in lowest.split("{{Stage|"):
+                    if "{{Match" not in low:
+                        continue
+                    new_games = parse_liquipedia_wc.parse_games(stage, low)
+                    new_games['stage_group'] = stage
+                    games_df.append(new_games)
+        matches = pd.concat(games_df, ignore_index=True)
+        if len(parses) > 0 and len(matches) == 0:
+            raise parse_liquipedia_wc.SectionNotFoundException(
+            "Found results section but could not parse game data, it is likely" \
+            " that the game data is not in the wikicode for this tournament")
         if len(games_df) == 0:
             raise parse_liquipedia_wc.SectionNotFoundException(
             "Could not find the results section on the page, " \
             "ensure that the page has a results" \
             " section. If this tournament has stages, " \
             "it is likely that the results section is in the stage pages")
-        matches = pd.concat(games_df, ignore_index=True)
         return matches
 
     def _get_matches_html(self) -> pd.DataFrame:
         """A private function to parse matches with html"""
+        match_idx = 0
         souped = BeautifulSoup(self.get_raw_str(), "html.parser")
         matchlists = souped.select(
         "div.general-collapsible.brkts-matchlist"
@@ -134,6 +144,8 @@ class Tournament(liquipedia_page.LiquipediaPage):
                 parsed = parse_liquipedia_html.parse_match_html(match)
                 parsed['stage'] = header
                 parsed['substage'] = title
+                parsed['match_idx'] = match_idx
+                match_idx += 1
                 all_matches.append(parsed)
         #parse brackets
         brackets = souped.select('div[class="brkts-bracket"]')
@@ -155,6 +167,8 @@ class Tournament(liquipedia_page.LiquipediaPage):
                         parsed = parse_liquipedia_html.parse_match_html(match)
                         parsed['stage'] = header
                         parsed['substage'] = sub_round
+                        parsed['match_idx'] = match_idx
+                        match_idx += 1
                         all_matches.append(parsed)
         #get single matches(mostly showmatches or
         #grand-finals where the finalists are weirdly determined)
@@ -173,7 +187,7 @@ class Tournament(liquipedia_page.LiquipediaPage):
             warnings.warn("Found a Matches Section but no actual match data was found. " \
             "If this tournament has not started yet this is expected.")
             #TODO: for future tournaments, still return structure of tournament
-        return all_matches
+        return all_matches.reset_index(drop = True)
 
     def get_results(self) -> pd.DataFrame:
         """Gets the results of a tournament"""
@@ -209,33 +223,28 @@ class Tournament(liquipedia_page.LiquipediaPage):
         if len(participants) == 0:
             raise parse_liquipedia_wc.SectionNotFoundException(
                 "Could not find participants section")
-        return pd.DataFrame(participants)
+        return pd.DataFrame(participants).reset_index(drop = True)
 
     def _get_participants_wc(self) -> pd.DataFrame:
         """Private function to get participants with wikicode parsing"""
-        team_dfs = []
-        str_parsed = mw.parse(self.raw_str)
-        for section in str_parsed.get_sections(include_lead=False, include_headings=True):
-            heading = section.filter_headings()[0].title.strip().lower()
-            if heading == "participants":
-                #if multiple subsections of teams
-                lowest_section = parse_liquipedia_wc.get_lowest_subsections(section)
-                for lowest in lowest_section:
-                    participant_stage = lowest.filter_headings()[0].title.strip().lower()
-                    pattern = r"\{\{[Tt]eam[Cc]ard(?=\n|\|).*?\}\}"
-                    teams = re.findall(pattern, str(lowest), re.DOTALL)
-                    for team in teams:
-                        team_series = parse_liquipedia_wc.parse_team(team)
-                        team_series['intro_stage'] = participant_stage
-                        team_dfs.append(team_series)
-        if len(team_dfs) == 0:
-            raise parse_liquipedia_wc.SectionNotFoundException("Could not find participants " \
-            "section on the page, ensure that the page has a participants" \
-            " section. If this is a stage of a larger tournament, it is likely " \
-            "that the participants section is in the tournament overview")
-        team_dfs = pd.concat(team_dfs, axis = 1).T
-        team_dfs.loc[:,'intro_stage'] = team_dfs['intro_stage'].str.strip("=")
-        return team_dfs
+        str_parsed = mw.parse(self.get_raw_str())
+        all_players = []
+        for section in str_parsed.get_sections(matches=r"(?i)^participants$"):
+            lowest_section = parse_liquipedia_wc.get_lowest_subsections(section)
+            for lowest in lowest_section:
+                participant_stage = lowest.filter_headings()[0].title.strip().lower()
+                match_tpl = [t for t in lowest.filter_templates(recursive=True)
+                        if t.name.matches("ParticipantSection") or t.name.matches('TeamCard')]
+                for participant in match_tpl:
+                    p_dict = {"stage": participant_stage}
+                    for param in participant.params:
+                        text = str(param.value)
+                        matches = re.findall(r"\[\[(.*?)\]\]", text)
+                        if matches:
+                            text = matches[0]
+                        p_dict[str(param.name)] = re.sub(r"[{}\[\]]", "", text).split("|")[-1]
+                    all_players.append(p_dict)
+        return pd.DataFrame(all_players)
 
     def get_talent(self) -> pd.DataFrame:
         """Gets the talent of a tournament"""
@@ -291,40 +300,44 @@ class Tournament(liquipedia_page.LiquipediaPage):
             #band-aid fix since the talent can be sometimes be parsed multiple times
             #this usually happens with tournaments with different stages and
             # if the talent section a mix of tabs and non-tabs
-            return all_talent.drop_duplicates(subset="fullname", keep='last', inplace=False)
+            return all_talent.drop_duplicates(subset="fullname", keep='last',
+                                               inplace=False).reset_index(drop = True)
         all_talent = all_talent.drop_duplicates(subset = "role", inplace = False)
         if len(all_talent.columns) == 1:
             #if not announced, manually fill with TBA
             #this might cause some side-effects tho, so look out in future
             all_talent['fullname'] = "TBA"
-        return all_talent
+        return all_talent.reset_index(drop = True)
 
 
 
 
     def _get_talent_wc(self) -> pd.DataFrame:
         """Private function to get participants with wikicode parsing"""
+        #TODO: add language of talent
         talent_stage = 1
         broadcast_df = []
         str_parsed = mw.parse(self.raw_str)
-        for section in str_parsed.get_sections(include_lead=False, include_headings=True):
-            heading = section.filter_headings()[0].title.strip().lower()
-            if heading in ["broadcast talent", "talent"]:
-                parse = mw.parse(section)
-                pattern = r"\{\{[Bb]roadcasterCard.*?\}\}"
-                roles = re.findall(pattern, str(parse), re.DOTALL)
-                for role in roles:
-                    role_df = parse_liquipedia_wc.parse_talent(role)
-                    role_df['talent_stage'] = talent_stage
-                    broadcast_df.append(role_df)
-                talent_stage += 1
+        for section in str_parsed.get_sections(
+            matches=r"(?i)^(broadcast talent|talent)$",
+            include_lead=False,
+            include_headings=True
+        ):
+            parse = mw.parse(section)
+            pattern = r"\{\{[Bb]roadcasterCard.*?\}\}"
+            roles = re.findall(pattern, str(parse), re.DOTALL)
+            for role in roles:
+                role_df = parse_liquipedia_wc.parse_talent(role)
+                role_df['talent_stage'] = talent_stage
+                broadcast_df.append(role_df)
+            talent_stage += 1
         if len(broadcast_df) == 0:
             raise parse_liquipedia_wc.SectionNotFoundException(
             "Could not find talent section on the page," \
             " ensure that the page has a talent" \
             "section. If this is a stage of a larger tournament, " \
             "it is likely that the talent section is in the tournament overview")
-        return pd.concat(broadcast_df)
+        return pd.concat(broadcast_df).reset_index(drop = True)
         #because of ul and div mixing for talent,
         #we need to do both which leads to double counting occassionally
         #might be a fix but seems difficult without sacrificing not counting some
@@ -355,8 +368,6 @@ class Tournament(liquipedia_page.LiquipediaPage):
                 cells = row.select(".csstable-widget-cell")
                 teams = row.find_all("div", class_ = "block-team")
                 teams =  [team.get_text() for team in teams]
-                #print(teams)
-                #queue to track spans
 
                 current_idx = 0
                 span_idx = 0
@@ -385,7 +396,7 @@ class Tournament(liquipedia_page.LiquipediaPage):
                     #print(cell.get_text())
                 row_dict = {k: v[0] if len(v) == 1 else v for k, v in row_dict.items()}
                 rows.append(row_dict)
-            df_list.append(pd.DataFrame(rows))
+            df_list.append(pd.DataFrame(rows).reset_index(drop = True))
         if len(df_list) == 0:
             raise parse_liquipedia_wc.SectionNotFoundException("Could not find prizes section")
         return df_list[0] if len(df_list) == 1 else df_list
@@ -394,13 +405,12 @@ class Tournament(liquipedia_page.LiquipediaPage):
         """Private function to get prize pool with wikicode parsing"""
         prizes = []
         str_parsed = mw.parse(self.raw_str)
-        for section in str_parsed.get_sections(include_headings= True, include_lead= False):
-            heading = section.filter_headings()[0].title.strip().lower()
-            if heading == "prize pool":
-                if "prize pool start" in str(section):
-                    prize_df = parse_liquipedia_wc.parse_expanded_prize_pool(str(section))
-                else:
-                    prize_df = parse_liquipedia_wc.parse_prizes(str(section))
-                prizes.append(prize_df)
+        for section in str_parsed.get_sections(matches=r"(?i)^prize pool"):
+            if "prize pool start" in str(section):
+                prize_df = parse_liquipedia_wc.parse_prizes(section, match_1 = "prize pool slot",
+                                                            match_2 = r"(?i)prize pool start")
+            else:
+                prize_df = parse_liquipedia_wc.parse_prizes(section)
+            prizes.append(prize_df)
 
-        return pd.concat(prizes)
+        return pd.concat(prizes).reset_index(drop = True)

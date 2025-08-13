@@ -10,6 +10,53 @@ Dependencies
 import pandas as pd
 from bs4 import BeautifulSoup
 from ggpyscraper.liquipedia_objects import liquipedia_page
+def parse_collapsable_tables(soup : BeautifulSoup) -> pd.DataFrame:
+    """
+    Parses a beautifulsoup collapsible table
+
+    Parameters
+    ----------
+        soup : BeautifulSoup
+            A beautifulsoup object to parse
+    
+    Returns
+    -------
+        pd.DataFrame:
+            A pandas dataframe describing the results of all the tables
+
+    """
+    tables = soup.select("table.wikitable.collapsible")
+    player_data = []
+    for table in tables:
+        rows = table.find_all('tr')
+        headers = rows[:2]
+        large_header = headers[0].get_text()
+        subheaders = headers[1].find_all("th")
+        header_map = dict(zip(range(len(subheaders)),
+                                [h.get_text(strip = True) for h in subheaders]))
+        for person in rows[2:]:
+            header_idx = 0
+            elements = person.find_all("td")
+            person_dict = {'type': large_header}
+            for element in elements:
+                header = header_map[header_idx]
+                links = element.find_all("a")
+                link_list = []
+                for link in links:
+                    link_list.append(link.get("href"))
+                link_list = list(set(link_list))
+                person_dict[header] = element.get_text(strip = True)
+                if len(link_list) > 0:
+                    if header.lower() == "links":
+                        person_dict[header] = link_list
+                    else:
+                        person_dict[f"{header}_links"] = link_list
+                header_idx += 1
+                #print(person_dict)
+            player_data.append(person_dict)
+        #county_players = {"country": country, "name": player.get_text() for player in players}
+    return pd.DataFrame(player_data)
+
 def parse_tournaments(name : str, game: str) -> pd.DataFrame:
     """
     Parses general tournament pages like https://liquipedia.net/counterstrike/S-Tier_Tournaments
@@ -26,63 +73,46 @@ def parse_tournaments(name : str, game: str) -> pd.DataFrame:
         pd.DataFrame
             A dataframe describing the contents of the tournament webpage
     """
-    raw_str = liquipedia_page.LiquipediaPage(game = game,
-                                             name = name, action = "parse").get_raw_str()
-    soup = BeautifulSoup(str(raw_str), "html")
-    all_tournaments = []
-    for tournament in soup.find_all("div", class_ = "gridRow"):
-        tourn_dictionary = {}
-        tier_cell = tournament.find("div", class_="gridCell Tier Header")
-        if tier_cell and (links := tier_cell.find_all("a")) and links[-1].has_attr("title"):
-            tourn_dictionary["tier"] = links[-1]["title"]
-        else:
-            tourn_dictionary["tier"] = None
+    raw_str = liquipedia_page.LiquipediaPage(game = game, name = name,
+                                             action = "html").get_raw_str()
+    tournament_data = []
+    souped = BeautifulSoup(raw_str, "html.parser")
+    cell_name = "div"
+    rows = souped.find_all("div", class_ = "divRow")
+    if len(rows) == 0:
+        rows = souped.find_all("div", class_ = "gridRow")
+        cell_name = "grid"
+    for row in rows:
+        cells = row.find_all("div", class_ = f"{cell_name}Cell")
+        row_data = {}
+        for cell in cells:
+            cell_class = cell.get("class")
+            text = list(set([val for val in cell.get_text(separator= "|").split("|")
+                             if len(val.strip()) > 0]))
+            if "Header" in cell_class:
+                cell_class.remove("Header")
+            hrefs = list(set([href['href'] for href in cell.find_all('a')]))
+            header_name = cell_class[-1]
+            if "Place" not in header_name and "Qualified" not in header_name:
+                #if not teams, then don't keep separated
+                text = "".join(text)
+            if "EventDetails" in header_name:
+                #don't know true header, must infer
+                if "Left" in header_name:
+                    #this is wayyyy to stringent, rework moving forward
+                    header_name = "Date" if "55" in header_name else header_name
+                    header_name = "Location" if "60" in header_name else header_name
+                if "Right" in header_name:
+                    header_name = "Prize" if "45" in header_name else header_name
+                    header_name = "PlayerNumber" if "40" in header_name else header_name
+            text = text[0] if isinstance(text, list) and len(text) == 1 else text
+            row_data[header_name] = text
+            if len(hrefs) > 0:
+                row_data[f"{header_name}_links"] = hrefs
+        tournament_data.append(row_data)
+    return pd.DataFrame(tournament_data)
 
-        tournament_cell = tournament.find("div", class_ = "gridCell Tournament Header")
-        link_tag = tournament_cell.find("a") if tournament_cell else None
-        tourn_dictionary["link"] = link_tag.get("href") if link_tag else None
-        tourn_dictionary["title"] = link_tag.get("title") if link_tag else None
-
-        date =  tournament.find("div", class_ = "gridCell EventDetails Date Header")
-        tourn_dictionary['date'] = date.get_text() if date else None
-        prize = tournament.find("div", class_ = "gridCell EventDetails Prize Header")
-        tourn_dictionary['prize_pool'] = prize.get_text() if prize else None
-
-        #get location
-        location = tournament.find("div", class_="gridCell EventDetails Location Header")
-        tourn_dictionary['location'] = location.get_text() if location else None
-
-        # get placements
-        first = tournament.find("div", class_="gridCell Placement FirstPlace Blank")
-        tourn_dictionary['first'] = first.get_text() if first else None
-
-        second = tournament.find("div", class_="gridCell Placement SecondPlace Blank")
-        tourn_dictionary['second'] = second.get_text() if second else None
-
-        if not tourn_dictionary['first']:
-            first = tournament.find("div", class_="gridCell Placement FirstPlace")
-            tourn_dictionary['first'] = first.get_text() if first else None
-        if not tourn_dictionary['second']:
-            second = tournament.find("div", class_="gridCell Placement SecondPlace")
-            tourn_dictionary['second'] = second.get_text() if second else None
-
-        if not tourn_dictionary.get('first') and not tourn_dictionary.get('second'):
-            qualifiers = tournament.find("div", class_="gridCell Placement Qualified")
-            if qualifiers:
-                teams = [team.get_text() for team in qualifiers.select(".team-template-text a")]
-            else:
-                qualifiers = tournament.find("div", class_="gridCell Placement Qualified Blank")
-                if qualifiers:
-                    teams = [team.get_text() for team in qualifiers.select(".team-template-text")]
-                else:
-                    teams = []
-            tourn_dictionary['qualified'] = teams
-
-        all_tournaments.append(tourn_dictionary)
-
-    return pd.DataFrame(all_tournaments)
-
-def parse_teams(region, game):
+def parse_teams(region: str, game: str) -> pd.DataFrame:
     """
     Parses general teams pages like https://liquipedia.net/counterstrike/Portal:Teams/Europe
 
@@ -100,40 +130,28 @@ def parse_teams(region, game):
         pd.DataFrame
             A dataframe describing the contents of the teams webpage
     """
-    name = f"Portal:/Teams/{region}"
+    name = f"Portal:Teams/{region}"
     raw_str = liquipedia_page.LiquipediaPage(game = game,
-                                            name = name, action = "parse").get_raw_str()
-    soup = BeautifulSoup(str(raw_str), "html")
-    tables = soup.find_all("table", class_=["wikitable", "collapsible", "smwtable"])
-    teams_data = []
+                                            name = name, action = "html").get_raw_str()
+    soup = BeautifulSoup(str(raw_str), "html.parser")
 
-    for table in tables:
+    active_teams = parse_collapsable_tables(soup)
+    active_teams['active'] = True
+    #parse inactive teams
+    inactive = []
+    if game == "counterstrike":
+        tables = soup.select("table.wikitable.smwtable")
+        for table in tables:
+            inactive.append({'type': table.get_text(strip = True), 'active': False,})
+        
+    else:
+        disbanded = soup.find("span", id = "Disbanded_teams").findNext('div')
+        for li in disbanded.find_all('li'):
+            inactive.append({'type': li.get_text(strip = True), 'active' : False})
+    inactive = pd.DataFrame(inactive)
+    return pd.concat([active_teams, inactive]).rename(columns = {"type": "team"})
 
-        team_name_tag = table.find("th", colspan="2")
-        disbanded = False
-        if not team_name_tag:
-            team_name = table.get_text(strip = True)
-            disbanded = True
-            players = []
-        else:
-            team_name = team_name_tag.get_text(strip=True)
-            players = []
-            for row in table.find_all("tr")[2:]:
-                cols = row.find_all("td")
-                if len(cols) >= 2:
-                    player_id = cols[0].get_text(strip=True)
-                    real_name = cols[1].get_text(strip=True)
-                    players.append({"id": player_id, "real_name": real_name})
-
-        teams_data.append({
-            "team": team_name,
-            "players": players,
-            "disbanded": disbanded
-        })
-
-    return pd.DataFrame(teams_data)
-
-def parse_players(region, game):
+def parse_players(region: str, game: str) -> pd.DataFrame:
     """
     Parses general teams pages like https://liquipedia.net/counterstrike/Portal:Players/Europe
 
@@ -141,7 +159,7 @@ def parse_players(region, game):
     ----------
         region: str
             The region of interest, found from 
-            https://liquipedia.net/counterstrike/Portal:Players/{region}
+            https://liquipedia.net/{game}/Portal:Players/{region}
             N.B. For Africa and the Middle East, the region is "Africa_&_Middle_East" 
             not "Africa_%26_Middle_East"
 
@@ -155,22 +173,26 @@ def parse_players(region, game):
     """
     name = f"Portal:Players/{region}"
     raw_str = liquipedia_page.LiquipediaPage(game = game,
-                                            name = name, action = "parse").get_raw_str()
-    soup = BeautifulSoup(str(raw_str), "html")
+                                            name = name, action = "html").get_raw_str()
+    soup = BeautifulSoup(str(raw_str), "html.parser")
     tables = soup.find_all("table", class_=["wikitable", "collapsible"])
-    player_dict = []
-    for table in tables:
-        country = table.find('th').get_text()
-        players = table.find_all("td")
-        for player in players:
-            name = player.get_text().split(" - ")[1]
-            tag = player.get_text().split(" - ")[0]
-            player_dict.append({"country": country, "name":name, "tag":tag})
-        #county_players = {"country": country, "name": player.get_text() for player in players}
-    return pd.DataFrame(player_dict)
+    if game == "counterstrike":
+        #cs has a different player style for some reason
+        player_dict = []
+        for table in tables:
+            country = table.find('th').get_text()
+            players = table.find_all("td")
+            for player in players:
+                name = player.get_text().split(" - ")[1]
+                tag = player.get_text().split(" - ")[0]
+                player_dict.append({"country": country, "name":name, "tag":tag})
+            #county_players = {"country": country, "name": player.get_text() for player in players}
+        return pd.DataFrame(player_dict)
+    else:
+        soup = BeautifulSoup(raw_str)
+        return parse_collapsable_tables(soup)
 
-
-def parse_banned_players(company, game):
+def parse_banned_players(game : str, company: str = None) -> pd.DataFrame:
     """
     Parses banned players page
 
@@ -179,7 +201,7 @@ def parse_banned_players(company, game):
         company: str
             The company banning the players, found from 
             https://liquipedia.net/{game}/Banned_Players/{company}
-
+            If no company, use None
         game: str
             The game being played
     
@@ -189,8 +211,10 @@ def parse_banned_players(company, game):
             A dataframe describing the contents of the banned players webpage
     """
     name = f"Banned_Players/{company}"
+    if company is None:
+        name = "Banned_players"
     raw_str = liquipedia_page.LiquipediaPage(game = game,
-                                            name = name, action = "parse").get_raw_str()
+                                            name = name, action = "html").get_raw_str()
     soup = BeautifulSoup(str(raw_str), "html")
     tables = soup.find_all("div", class_ = "divTable Ref")
     banned = []
@@ -216,15 +240,16 @@ def parse_banned_players(company, game):
 
     return pd.DataFrame(banned)
 
-def parse_transfers(time, game):
+def parse_transfers(name:str, game:str) -> pd.DataFrame:
     """
     Parses transfers page
 
     Parameters
     ----------
-        time: str
+        name: str
             The time period considered, found from
-            https://liquipedia.net/counterstrike/Player_Transfers/{time}
+            https://liquipedia.net/counterstrike/{name}
+            Usually "Transfers/{time}" or "Player_Transfers/{time}"
 
         game: str
             The game being played
@@ -234,15 +259,14 @@ def parse_transfers(time, game):
         pd.DataFrame
             A dataframe describing the contents of transfers page
     """
-    name = f"Player_Transfers/{time}"
     raw_str = liquipedia_page.LiquipediaPage(game = game,
-                                            name = name, action = "parse").get_raw_str()
-    soup = BeautifulSoup(str(raw_str), "html")
+                                            name = name, action = "html").get_raw_str()
+    soup = BeautifulSoup(str(raw_str), "html.parser")
     tables = soup.find_all("div", class_ = "divTable mainpage-transfer Ref")
     transfers_list = []
 
     for table in tables:
-        transfers  = table.find_all("div", class_ = "divRow mainpage-transfer-neutral")
+        transfers  = table.find_all("div", class_ = "divRow")
         for transfer in transfers:
             transfer_dict = {}
             date = transfer.find("div", class_ = "divCell Date")
@@ -253,12 +277,17 @@ def parse_transfers(time, game):
             block.select_one(".name a").get_text(strip=True)
             for block in transfer.select("div.block-player")
             ]
-
+            transfer_dict['name_links'] = [
+            link.find("a")['href'] for link in
+            transfer.select("div.block-player")
+            ]
             # Extract old and new team titles
             for key, class_name in [("old", "divCell Team OldTeam"),
                                      ("new", "divCell Team NewTeam")]:
                 team_div = transfer.find("div", class_=class_name)
                 a_tag = team_div.find("a") if team_div else None
-                transfer_dict[key] = a_tag.get("title") if a_tag else None
+                transfer_dict[key] = a_tag['title'] if a_tag else None
+                if a_tag:
+                    transfer_dict[f"{key}_link"] = a_tag['href']
             transfers_list.append(transfer_dict)
     return pd.DataFrame(transfers_list)

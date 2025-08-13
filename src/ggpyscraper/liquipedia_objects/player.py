@@ -170,18 +170,13 @@ class Player(liquipedia_page.LiquipediaPage):
         """
         parsed = mw.parse(self.get_raw_str())
         gear_dict = {}
-        for section in parsed.get_sections(include_lead=False, include_headings=True):
-            heading = section.filter_headings()[0].title.strip().lower()
-
-            if heading == "gear and settings":
-                for template in section.filter_templates():
-                    if "table" in template.name.lower():
-                        elements = re.findall(r"\|([^=|]+)=([^|]+)", str(template))
-                        table_dict = {k.strip(): v.strip("}\n") for k, v in elements}
-                        template_name = str(template.name).strip()
-                        template_name = re.sub(r"\s*table$", "", template_name, flags=re.IGNORECASE)
-                        gear_dict[template_name.lower()] = table_dict
-            break
+        for section in parsed.get_sections(matches=r"(?i)^gear and settings"):
+            for template in section.filter_templates():
+                subgear_dict = {}
+                heading = template.name.strip().replace(" table", "")
+                for param in template.params:
+                    subgear_dict[str(param.name)] = str(param.value).strip()
+                gear_dict[heading] = subgear_dict
         return gear_dict
     def get_achievements(self) -> Union[List[pd.DataFrame],
                             List[Dict[str, pd.DataFrame]],
@@ -201,4 +196,4 @@ class Player(liquipedia_page.LiquipediaPage):
             raise parse_liquipedia_wc.SectionNotFoundException(
                 "Cannot parse achievements section using a wikicode parse, try html parse")
         return parse_liquipedia_html.parse_achievements(BeautifulSoup(
-            self.get_raw_str(),"html.parser"))
+            self.get_raw_str(),"html.parser")).reset_index(drop = True)

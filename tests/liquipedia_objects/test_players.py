@@ -1,60 +1,55 @@
-"""Testing the team class"""
+"""Testing the Player class"""
 import unittest
 from pathlib import Path
 import pandas as pd
-from ggpyscraper.liquipedia_objects import team
+from ggpyscraper.liquipedia_objects import player
 from ggpyscraper import parse_multiple_liquipedia_pages
 
 GAME = "counterstrike"
-TEAMS = ['Evil_Geniuses.ca', 'G2_Esports']
-test = team.Team(game = "counterstrike", name = "G2_Esports", action = "html")
-#get_info, news, roster, organization, results(achievements), results(recent matches)
-#WC: 26, 70, 69, 24, none, none
-#HTML: 10, 70, 69, 24, 10, 10
+PLAYERS = ['Autimatic', 'Stewie2K']
+INFOS_wc = dict(zip(PLAYERS, [22, 24]))
+INFOS_html = dict(zip(PLAYERS, [10, 11]))
 
-#get_info, news, roster, organization, results(achievements), results(recent matches)
-#WC: 12, 2, 9, 1, none, none
-#HTML: 6, 2, 9, 1, 4, 10
-INFOS_wc = dict(zip(TEAMS, [12, 26]))
-INFOS_html = dict(zip(TEAMS, [6, 10]))
+GEAR_html = dict(zip(PLAYERS, [1,3]))
 
-NEWS = dict(zip(TEAMS, [2, 70]))
+GEAR_wc = dict(zip(PLAYERS, [2,4]))
+GEAR_CROSSHAIR_html = dict(zip(PLAYERS, [9,9]))
 
-ROSTER = dict(zip(TEAMS, [9, 69]))
-ORGANIZATION = dict(zip(TEAMS, [1, 24]))
-ACHIEVEMENTS = dict(zip(TEAMS, [4, 10]))
-RECENT_MATCHES = dict(zip(TEAMS, [10, 10]))
+GEAR_CROSSHAIR_wc = dict(zip(PLAYERS, [3,3]))
 
+TEAM_HISTORY = dict(zip(PLAYERS, [13, 12]))
 
-BASE_PATH = Path("tests/assets/team")
-class Testteams(unittest.TestCase):
-    """Test the team class"""
+ACHIEVEMENTS = dict(zip(PLAYERS, [10, 10]))
+
+BASE_PATH = Path("tests/assets/player")
+class TestPlayers(unittest.TestCase):
+    """Test the Player class"""
 
     @classmethod
     def setUpClass(cls):
         # Build wikicode-backed Tournament objects (one network call batching page names)
-        cls.all_teams_wikicode = parse_multiple_liquipedia_pages.create_multiple_pages(
-            game=GAME, page_names=TEAMS, page_ts="team"
+        cls.all_players_wikicode = parse_multiple_liquipedia_pages.create_multiple_pages(
+            game=GAME, page_names=PLAYERS, page_ts="player"
         )
 
-        # Build HTML-backed team objects from local fixtures
-        cls.all_teams_html = {}
-        for t_name in TEAMS:
+        # Build HTML-backed player objects from local fixtures
+        cls.all_players_html = {}
+        for t_name in PLAYERS:
             path = BASE_PATH / f"{t_name.replace('/', '_')}.txt"
             with path.open("r", encoding="utf-8") as f:
                 raw_html = f.read()
-            t_obj = team.Team.from_raw_str(
+            t_obj = player.Player.from_raw_str(
                 name=t_name, game=GAME, action="html", response=raw_html
             )
-            cls.all_teams_html[t_name] = t_obj
-    def setup_test_teams(self, teams,
+            cls.all_players_html[t_name] = t_obj
+    def setup_test_players(self, players,
                                ground_truths, method_name, mode="wikicode", both = False,
                                key = None):
-        """Sets up and runs tests for TEAMS."""
-        team_dict = self.all_teams_wikicode if mode == "wikicode" else self.all_teams_html
+        """Sets up and runs tests for players."""
+        player_dict = self.all_players_wikicode if mode == "wikicode" else self.all_players_html
         results_tournament = {name: t_obj for name, t_obj in
-                            team_dict.items() if
-                            name in teams}
+                            player_dict.items() if
+                            name in players}
 
         for to_name, to_obj in results_tournament.items():
             with self.subTest(name=to_name, mode=mode):
@@ -74,38 +69,38 @@ class Testteams(unittest.TestCase):
                     expected_size,
                     msg=f"{to_name}, {mode}",
                 )
-    def test_get_info_html(self):
-        """Tests the get_info method for HTML"""
-        self.setup_test_teams(TEAMS, INFOS_html, "get_info", mode="html")
-    def test_get_info_wikicode(self):
-        """Tests the get_info method for wikicode"""
-        self.setup_test_teams(TEAMS, INFOS_wc, "get_info", mode="wikicode")
-    def test_get_news_html(self):
-        """Tests the get_news method for HTML"""
-        self.setup_test_teams(TEAMS, NEWS, "get_news", mode="html")
-    def test_get_news_wikicode(self):
-        """Tests the get_news method for wikicode"""
-        self.setup_test_teams(TEAMS, NEWS, "get_news", mode="wikicode")
-    def test_get_roster_html(self):
-        """Tests the get_players method for HTML"""
-        self.setup_test_teams(TEAMS, ROSTER, "get_players", mode="html")
-    def test_get_roster_wikicode(self):
-        """Tests the get_players method for wikicode"""
-        self.setup_test_teams(TEAMS, ROSTER, "get_players", mode="wikicode")
-    def test_get_organization_html(self):
-        """Tests the get_organization method for HTML"""
-        self.setup_test_teams(TEAMS, ORGANIZATION, "get_organization", mode="html")
-    def test_get_organization_wikicode(self):
-        """Tests the get_organization method for wikicode"""
-        self.setup_test_teams(TEAMS, ORGANIZATION, "get_organization", mode="wikicode")
-    def test_get_achievements_html(self):
-        """Tests the get_results method for HTML"""
-        self.setup_test_teams(TEAMS, ACHIEVEMENTS, "get_results", mode="html",
-                              both = True, key = "Achievements")
-    def test_get_recent_matches_html(self):
-        """Tests the get_results method for HTML"""
-        self.setup_test_teams(TEAMS, RECENT_MATCHES, "get_results", mode="html",
-                              both = True, key = "Recent Matches")
-
+    def test_info_wc(self):
+        """Validate info counts using WC parse."""
+        self.setup_test_players(PLAYERS, INFOS_wc,
+                                    "get_info", mode="wikicode")
+    def test_info_html(self):
+        """Validate info counts using HTML parse."""
+        self.setup_test_players(PLAYERS, INFOS_html,
+                                    "get_info", mode="html")
+    def test_gear_html(self):
+        """Validate gear counts using HTML parse."""
+        self.setup_test_players(PLAYERS, GEAR_html, "get_gear", mode="html")
+    def test_gear_wc(self):
+        """Validate gear counts using WC parse."""
+        self.setup_test_players(PLAYERS, GEAR_wc, "get_gear", mode="wikicode")
+    def test_gear_crosshair_html(self):
+        """Validate gear crosshair counts using HTML parse."""
+        self.setup_test_players(PLAYERS, GEAR_CROSSHAIR_html, "get_gear",
+                                mode="html", key = "Crosshair Settings")
+    def test_gear_crosshair_wikicode(self):
+        """Validate gear crosshair counts using wikicode parse."""
+        self.setup_test_players(PLAYERS, GEAR_CROSSHAIR_wc, "get_gear",
+                                 mode="wikicode", key = "Crosshair")
+    def test_team_history_wc(self):
+        """Validate team history counts using WC parse."""
+        self.setup_test_players(PLAYERS, TEAM_HISTORY, "get_info",
+                                mode="wikicode", key = "team_history")
+    def test_team_history_html(self):
+        """Validate team history counts using HTML parse."""
+        self.setup_test_players(PLAYERS, TEAM_HISTORY, "get_info",
+                                mode="html", key = "team_history")
+    def test_achievements_html(self):
+        """Validate achievements counts using HTML parse."""
+        self.setup_test_players(PLAYERS, ACHIEVEMENTS, "get_achievements", mode="html")
 if __name__ == "__main__":
     unittest.main()

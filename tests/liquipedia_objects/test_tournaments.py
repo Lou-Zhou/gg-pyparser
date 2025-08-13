@@ -35,9 +35,10 @@ def convert_to_dict(tournaments, values):
     """Convers two lists into a dictionary"""
     return dict(zip(tournaments, values))
 
-PRIZE_SIZES_wc = convert_to_dict(PRIZE_TOURNAMENTS, [(6, 2), (4, 3), (8,9), (4,3), (1,1)])
+PRIZE_SIZES_wc = convert_to_dict(PRIZE_TOURNAMENTS, [(6, 3), (4, 3), (8,19), (4,3), (1,4)])
 PRIZE_SIZES_html = convert_to_dict(PRIZE_TOURNAMENTS, [(6, 3), (4, 4), (6,4), (4,4), (4,3)])
-MATCH_SIZES = convert_to_dict(TOURNAMENTS, [59, 83, 21, 89, 72, 68, 43, 18])
+MATCH_SIZES = convert_to_dict(TOURNAMENTS, [59, 83, 21, 89, 72, 74, 43, 18])
+#wikicode parser will get all map forfeits while html will only get one map
 INFO_SIZES_wc = convert_to_dict(INFO_TOURNAMENTS, [37])
 INFO_SIZES_html = convert_to_dict(INFO_TOURNAMENTS, [12])
 PARTICIPANTS_SIZES = convert_to_dict(PARTICIPANTS_TOURNAMENTS, [12, 16])
@@ -68,7 +69,8 @@ class TestTournaments(unittest.TestCase):
     def setup_test_tournaments(self, tournaments,
                                ground_truths, method_name, mode="wikicode", both = False):
         """Sets up and runs tests for tournaments."""
-        tourn_dict = self.all_tournaments_wikicode if mode == "wikicode" else self.all_tournaments_html
+        tourn_dict = (self.all_tournaments_wikicode if
+                       mode == "wikicode" else self.all_tournaments_html)
         results_tournament = {name: t_obj for name, t_obj in
                             tourn_dict.items() if
                             name in tournaments}
@@ -123,7 +125,7 @@ class TestTournaments(unittest.TestCase):
         """Validate participant counts using HTML parse."""
         self.setup_test_tournaments(PARTICIPANTS_TOURNAMENTS, PARTICIPANTS_SIZES,
                                     "get_participants",  mode="html")
-        
+
     def test_talent_wc(self):
         """Validate participant counts using WC parse."""
         self.setup_test_tournaments(TALENT_TOURNAMENTS, TALENT_SIZES,

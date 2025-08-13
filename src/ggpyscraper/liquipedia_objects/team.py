@@ -106,7 +106,7 @@ class Team(liquipedia_page.LiquipediaPage):
             else:
                 tabbed_data.append(pd.DataFrame(parse_liquipedia_html.
                                                 parse_single_tab_history(data)))
-        return pd.concat(tabbed_data)
+        return pd.concat(tabbed_data).reset_index(drop = True)
 
     def _get_news_wc(self) -> pd.DataFrame:
         """ Private method to get the data about a team's news using wikicode parse """
@@ -123,7 +123,7 @@ class Team(liquipedia_page.LiquipediaPage):
                         if data != -1 and len(data) > 0:
                             data['year'] = year
                             news_data.append(data)
-        return pd.DataFrame(news_data)
+        return pd.DataFrame(news_data).reset_index(drop = True)
 
     def get_players(self) -> Union[pd.DataFrame, Dict[str, pd.DataFrame]]:
         """Gets information about a team's players"""
@@ -162,7 +162,7 @@ class Team(liquipedia_page.LiquipediaPage):
                 for game, text in tab_map.items():
                     all_players = all_players + parse_liquipedia_html.parse_players_raw(
                         text, game)
-        return pd.concat(all_players)
+        return pd.concat(all_players).reset_index(drop = True)
 
     def _get_people_wc(self, header) -> Union[pd.DataFrame, Dict[str, pd.DataFrame]]:
         """Private method parsing a section describing people with wikicode
@@ -178,28 +178,26 @@ class Team(liquipedia_page.LiquipediaPage):
                 information about the section's people
         """
         all_people = []
-        stand_ins = []
         parsed = mw.parse(self.raw_str)
         for section in parsed.get_sections(include_lead=False, include_headings=True):
             sec_title = section.filter_headings()[0].title.strip().lower()
             if sec_title == header:
                 #get players(non standins)
-                people = re.findall(r"\{\{Person\|((?:[^{}]|\{\{[^{}]*\}\})*)\}\}",
-                                    str(section), re.DOTALL)
-                for person in people:
-                    person_dict = parse_liquipedia_wc.parse_person(person)
-                    if 'role' in person_dict and "abbr" in person_dict['role'].lower():
-                        person_dict['role'] = re.split("[|/]", person_dict['role'])[-1].strip("}")
-                    all_people.append(person_dict)
-                people = re.findall(r"\{\{Stand-in\|((?:[^{}]|\{\{[^{}]*\}\})*)\}\}",
-                                     str(section), re.DOTALL)
-                for person in people:
-                    person_dict = parse_liquipedia_wc.parse_person(person)
-                    stand_ins.append(person_dict)
-        if len(stand_ins) > 0:
-            return pd.concat([pd.DataFrame(all_people),
-            pd.DataFrame(stand_ins)])
-        return pd.DataFrame(all_people)
+                p_tpl = [p for p in section.filter_templates(recursive=True)
+                 if p.name.matches("Person") or p.name.matches("stand-in")]
+                for player in p_tpl:
+                    player_dict = {}
+                    for param in player.params:
+                        entry = str(param.value)
+                        entry = re.sub(r"<ref.*?(.*?)/>", "", entry)
+                        entry = re.sub(r"<ref.*?>(.*?)</ref>", "", entry)
+                        matches = re.findall(r"\[\[(.*?)\]\]", entry)
+                        if matches:
+                            entry = matches
+                        player_dict[str(param.name)] = entry
+
+                    all_people.append(player_dict)
+        return pd.DataFrame(all_people).reset_index(drop = True)
     def get_results(self):
         """Parses results section for a team"""
         if self.action == "wikicode":
@@ -212,6 +210,7 @@ class Team(liquipedia_page.LiquipediaPage):
             if data.get("class") and  any("tabs" in c for c in data.get("class")):
                 timeline_table = parse_liquipedia_html.build_tab_map(data)
                 return {k: parse_liquipedia_html.
-                        parse_wikitable_achievements(v) for k,v in timeline_table.items()}
+                        parse_wikitable_achievements(v).
+                        reset_index(drop = True) for k,v in timeline_table.items()}
         raise parse_liquipedia_wc.SectionNotFoundException("Could not find results table")
     

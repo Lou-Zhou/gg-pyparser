@@ -16,10 +16,11 @@ parse_liquipedia.SectionNotFoundException
 
 
 """
+import re
+import warnings
 from typing import Dict, List, Union, Optional, Tuple
 from collections import defaultdict
 import pandas as pd
-import re
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 from ggpyscraper.parse_liquipedia import parse_liquipedia_wc
@@ -110,7 +111,7 @@ def parse_side_scores_html(table: BeautifulSoup) -> List[Tuple[str, str, Optiona
 
 def parse_match_html(match:BeautifulSoup) -> pd.DataFrame:
     """
-    Parses a single map given html
+    Parses a single match(multiple maps) given html
     Parameters
     ----------
         match: BeautifulSoup
@@ -125,7 +126,6 @@ def parse_match_html(match:BeautifulSoup) -> pd.DataFrame:
     time = countdown.get_text() if countdown else None
     lhs_tag = match.select_one(".match-info-header-opponent-left")
     lhs_url, lhs_title = None, None
-
     if lhs_tag:
         name_link = lhs_tag.select_one(".name a")
         if name_link:
@@ -139,6 +139,12 @@ def parse_match_html(match:BeautifulSoup) -> pd.DataFrame:
             rhs_url = name_link['href']
             rhs_title = name_link['title']
     games = match.find_all("div", class_ = "brkts-popup-body-element brkts-popup-body-game")
+    if len(games) == 0:
+        #no games, return empty dataframe
+        warnings.warn("No games found in the provided match HTML - " \
+        "indicates potential forfeited match.")
+        cols = ["t1","t1_url","t2","t2_url","map","t1_scores","t2_scores","time"]
+        return pd.DataFrame([{}], columns=cols)
     parsed_games = []
     for game in games:
         map_tag = game.select_one("a")
