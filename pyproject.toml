@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ggpyscraper"
-version = "0.0.1dev1"
-description = "General use parser for esports liquipedia data"
+version = "0.0.3"
+description = "Python based liquipedia esports data scraper "
 readme = "README.md"
 license = "MIT"
 license-files = [

@@ -61,10 +61,9 @@ PageTypeRegistry.register("team")(team.Team)
 PageTypeRegistry.register("player")(player.Player)
 
 def create_multiple_pages(game : str,page_names : List[str], page_ts : Union[List[str], str],
-                        user : str ="initial python testing(github.com/louzhou)") -> Dict[str, Any]:
+                        user : str) -> Dict[str, Any]:
     """
         Helper function to get many pages in one api call - only wikicode parsing is supported
-        TODO: add html parsing - idk if this is even possible with current api
         Parameters
         ----------
         game: str

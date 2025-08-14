@@ -57,7 +57,7 @@ def parse_collapsable_tables(soup : BeautifulSoup) -> pd.DataFrame:
         #county_players = {"country": country, "name": player.get_text() for player in players}
     return pd.DataFrame(player_data)
 
-def parse_tournaments(name : str, game: str) -> pd.DataFrame:
+def parse_tournaments(name : str, game: str, user: str) -> pd.DataFrame:
     """
     Parses general tournament pages like https://liquipedia.net/counterstrike/S-Tier_Tournaments
 
@@ -67,6 +67,8 @@ def parse_tournaments(name : str, game: str) -> pd.DataFrame:
             Name of the page, found from https://liquipedia.net/counterstrike/{page}
         game: str
             The game being played
+        user: str
+            Information about the current project
     
     Returns
     -------
@@ -74,7 +76,7 @@ def parse_tournaments(name : str, game: str) -> pd.DataFrame:
             A dataframe describing the contents of the tournament webpage
     """
     raw_str = liquipedia_page.LiquipediaPage(game = game, name = name,
-                                             action = "html").get_raw_str()
+                                             action = "html", user = user).get_raw_str()
     tournament_data = []
     souped = BeautifulSoup(raw_str, "html.parser")
     cell_name = "div"
@@ -112,7 +114,7 @@ def parse_tournaments(name : str, game: str) -> pd.DataFrame:
         tournament_data.append(row_data)
     return pd.DataFrame(tournament_data)
 
-def parse_teams(region: str, game: str) -> pd.DataFrame:
+def parse_teams(region: str, game: str, user:str) -> pd.DataFrame:
     """
     Parses general teams pages like https://liquipedia.net/counterstrike/Portal:Teams/Europe
 
@@ -124,6 +126,8 @@ def parse_teams(region: str, game: str) -> pd.DataFrame:
 
         game: str
             The game being played
+        user: str
+            Information about the current project
     
     Returns
     -------
@@ -131,8 +135,8 @@ def parse_teams(region: str, game: str) -> pd.DataFrame:
             A dataframe describing the contents of the teams webpage
     """
     name = f"Portal:Teams/{region}"
-    raw_str = liquipedia_page.LiquipediaPage(game = game,
-                                            name = name, action = "html").get_raw_str()
+    raw_str = liquipedia_page.LiquipediaPage(game = game, name = name,
+                                             action = "html", user = user).get_raw_str()
     soup = BeautifulSoup(str(raw_str), "html.parser")
 
     active_teams = parse_collapsable_tables(soup)
@@ -143,7 +147,7 @@ def parse_teams(region: str, game: str) -> pd.DataFrame:
         tables = soup.select("table.wikitable.smwtable")
         for table in tables:
             inactive.append({'type': table.get_text(strip = True), 'active': False,})
-        
+
     else:
         disbanded = soup.find("span", id = "Disbanded_teams").findNext('div')
         for li in disbanded.find_all('li'):
@@ -151,7 +155,7 @@ def parse_teams(region: str, game: str) -> pd.DataFrame:
     inactive = pd.DataFrame(inactive)
     return pd.concat([active_teams, inactive]).rename(columns = {"type": "team"})
 
-def parse_players(region: str, game: str) -> pd.DataFrame:
+def parse_players(region: str, game: str, user: str) -> pd.DataFrame:
     """
     Parses general teams pages like https://liquipedia.net/counterstrike/Portal:Players/Europe
 
@@ -165,6 +169,9 @@ def parse_players(region: str, game: str) -> pd.DataFrame:
 
         game: str
             The game being played
+        
+        user: str
+            Information about the current project
     
     Returns
     -------
@@ -172,8 +179,8 @@ def parse_players(region: str, game: str) -> pd.DataFrame:
             A dataframe describing the contents of the players webpage
     """
     name = f"Portal:Players/{region}"
-    raw_str = liquipedia_page.LiquipediaPage(game = game,
-                                            name = name, action = "html").get_raw_str()
+    raw_str = liquipedia_page.LiquipediaPage(game = game, name = name,
+                                             action = "html", user = user).get_raw_str()
     soup = BeautifulSoup(str(raw_str), "html.parser")
     tables = soup.find_all("table", class_=["wikitable", "collapsible"])
     if game == "counterstrike":
@@ -192,7 +199,7 @@ def parse_players(region: str, game: str) -> pd.DataFrame:
         soup = BeautifulSoup(raw_str)
         return parse_collapsable_tables(soup)
 
-def parse_banned_players(game : str, company: str = None) -> pd.DataFrame:
+def parse_banned_players(game : str, user : str, company: str = None) -> pd.DataFrame:
     """
     Parses banned players page
 
@@ -213,9 +220,9 @@ def parse_banned_players(game : str, company: str = None) -> pd.DataFrame:
     name = f"Banned_Players/{company}"
     if company is None:
         name = "Banned_players"
-    raw_str = liquipedia_page.LiquipediaPage(game = game,
-                                            name = name, action = "html").get_raw_str()
-    soup = BeautifulSoup(str(raw_str), "html")
+    raw_str = liquipedia_page.LiquipediaPage(game = game, name = name,
+                                              action = "html", user = user).get_raw_str()
+    soup = BeautifulSoup(str(raw_str), "html.parser")
     tables = soup.find_all("div", class_ = "divTable Ref")
     banned = []
     for table in tables:
@@ -240,7 +247,7 @@ def parse_banned_players(game : str, company: str = None) -> pd.DataFrame:
 
     return pd.DataFrame(banned)
 
-def parse_transfers(name:str, game:str) -> pd.DataFrame:
+def parse_transfers(name:str, game:str, user: str) -> pd.DataFrame:
     """
     Parses transfers page
 
@@ -253,14 +260,17 @@ def parse_transfers(name:str, game:str) -> pd.DataFrame:
 
         game: str
             The game being played
+        user: str
+            Information about the current project
+
     
     Returns
     -------
         pd.DataFrame
             A dataframe describing the contents of transfers page
     """
-    raw_str = liquipedia_page.LiquipediaPage(game = game,
-                                            name = name, action = "html").get_raw_str()
+    raw_str = liquipedia_page.LiquipediaPage(game = game, name = name, 
+                                             action = "html", user = user).get_raw_str()
     soup = BeautifulSoup(str(raw_str), "html.parser")
     tables = soup.find_all("div", class_ = "divTable mainpage-transfer Ref")
     transfers_list = []

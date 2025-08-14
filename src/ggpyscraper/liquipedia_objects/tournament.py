@@ -50,7 +50,7 @@ class Tournament(liquipedia_page.LiquipediaPage):
         Get the tournament's prize pool
     """
     def __init__(self, game : str, name : str,
-                 user : str="initial python testing(github.com/louzhou)",  action : str = "wikicode"
+                 user : str,  action : str = "wikicode"
                  ) -> None:
         """
         Creates a tournament object
@@ -186,7 +186,7 @@ class Tournament(liquipedia_page.LiquipediaPage):
         if all_matches.shape[0] == 0:
             warnings.warn("Found a Matches Section but no actual match data was found. " \
             "If this tournament has not started yet this is expected.")
-            #TODO: for future tournaments, still return structure of tournament
+            #TODO: for tournaments yet to be played, still return structure of tournament
         return all_matches.reset_index(drop = True)
 
     def get_results(self) -> pd.DataFrame:
@@ -324,6 +324,7 @@ class Tournament(liquipedia_page.LiquipediaPage):
             include_headings=True
         ):
             parse = mw.parse(section)
+            #TODO: change to template matching instead of regex
             pattern = r"\{\{[Bb]roadcasterCard.*?\}\}"
             roles = re.findall(pattern, str(parse), re.DOTALL)
             for role in roles:

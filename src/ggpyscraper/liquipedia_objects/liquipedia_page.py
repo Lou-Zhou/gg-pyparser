@@ -61,7 +61,7 @@ class LiquipediaPage:
         Gets the raw string describing the page's text
     """
     def __init__(self, game : str, name : str,
-                user : str = "initial python testing(github.com/louzhou)",
+                user : str,
                 action : str= "wikicode") -> None:
         """
         Creates a LiquipediaPage object
@@ -174,9 +174,9 @@ class LiquipediaPage:
     def from_raw_str(
         cls: Type[T],
         response: str,
+        user: str,
         game: Optional[str] = None,
         name: Optional[str] = None,
-        user: str = "initial python testing(github.com/louzhou)",
         action: str = "wikicode"
     ) -> T:
         """Alternate constructor to build a liquipedia page object from the raw text"""

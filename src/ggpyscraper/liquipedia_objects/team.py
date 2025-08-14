@@ -44,7 +44,7 @@ class Team(liquipedia_page.LiquipediaPage):
     get_results()
         Get both the achievements and recent matches for a team
     """
-    def __init__(self, game, name, user="initial python testing(github.com/louzhou)",
+    def __init__(self, game, name, user,
                   action = "wikicode"):
         """
         Creates a Team object

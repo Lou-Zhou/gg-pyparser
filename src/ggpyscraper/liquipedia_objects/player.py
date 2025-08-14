@@ -20,7 +20,6 @@ Dependencies
 - LiquipediaPage: Base class for interacting with Liquipedia.
 """
 from typing import Dict, List, Union
-import re
 from bs4 import BeautifulSoup
 import pandas as pd
 import mwparserfromhell as mw
@@ -44,7 +43,7 @@ class Player(liquipedia_page.LiquipediaPage):
     
     """
     def __init__(self, game :str, name: str,
-                 user: str ="initial python testing(github.com/louzhou)", action : str = "wikicode"
+                 user: str, action : str = "wikicode"
                  ) -> None:
         """
         Creates a player object

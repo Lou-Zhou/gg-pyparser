@@ -5,7 +5,7 @@ Dependencies
 ------------
 - BeautifulSoup
 - pandas
-- regex
+- re
 - mwparserfromhell: MediaWiki wikitext parsing
 - parse_liquipedia: Other internal parsing utilities
 
