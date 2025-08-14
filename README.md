@@ -139,7 +139,7 @@ Because this library relies the Liquipedia API, calls are subject to following t
 For reference, a call occurs whenever the user calls a ```Tournament, Team, or Player``` object is created(with the exception being with `parse_multiple_liquipedia_pages` where mutiple pages are generated from one call). I strongly recommend reviewing the Terms of Use and implementing throttling between requests to prevent exceeding these limits and risking an IP ban.
 
 ## Issues and Bugs
-This library is intended as a general solution for parsing data across a wide variety of esports, each with different tournament formats and prize pool structures. Combined with the fact that it is maintained by an undergraduate student with limited non-research software development experience and that this is a very early version, bugs are to be expected. Feedback and bug reports are welcome and can be submitted in [Issues](https://github.com/Lou-Zhou/gg-pyscraper/issues).
+This library is designed as a general solution for parsing data across a diverse range of esports, each with unique tournament formats and prize pool structures. As an early-stage project maintained by an undergraduate student with limited professional software development experience, bugs are to be expected. Feedback and bug reports are encouraged and can be submitted via [Issues](https://github.com/Lou-Zhou/gg-pyscraper/issues)
 
 ## Contributing
 Contributions are more than welcome! If you're interested in contributing to this library, please make a [Pull Request](https://github.com/Lou-Zhou/gg-pyscraper/pulls).
