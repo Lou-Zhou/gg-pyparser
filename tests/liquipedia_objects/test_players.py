@@ -29,7 +29,8 @@ class TestPlayers(unittest.TestCase):
     def setUpClass(cls):
         # Build wikicode-backed Tournament objects (one network call batching page names)
         cls.all_players_wikicode = parse_multiple_liquipedia_pages.create_multiple_pages(
-            game=GAME, page_names=PLAYERS, page_ts="player"
+            game=GAME, page_names=PLAYERS, page_ts="player",
+            user = "ggpyparser testing(github.com/Lou-Zhou)"
         )
 
         # Build HTML-backed player objects from local fixtures
@@ -39,7 +40,8 @@ class TestPlayers(unittest.TestCase):
             with path.open("r", encoding="utf-8") as f:
                 raw_html = f.read()
             t_obj = player.Player.from_raw_str(
-                name=t_name, game=GAME, action="html", response=raw_html
+                name=t_name, game=GAME, action="html", response=raw_html,
+                user = "ggpyparser testing(github.com/Lou-Zhou)"
             )
             cls.all_players_html[t_name] = t_obj
     def setup_test_players(self, players,

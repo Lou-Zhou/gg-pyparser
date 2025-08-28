@@ -23,11 +23,13 @@ UnknownParsingMethodException
     Raised when the parsing method is not "action" or "wikicode"
 """
 from typing import Dict, Union,Optional, Type, TypeVar, List
+from urllib.parse import unquote
 import re
 import warnings
 import mwparserfromhell as mw
 from bs4 import BeautifulSoup
 from bs4.element import Tag
+
 
 import pandas as pd
 from ggpyscraper.parse_liquipedia import parse_liquipedia_wc
@@ -84,7 +86,7 @@ class LiquipediaPage:
             raise UnknownParsingMethodException("Unknown Parsing Method")
         self.user = user
         self.game = game
-        self.name = name
+        self.name = unquote(name)
         self.action = action
         self.raw_str = self._make_request()
 
@@ -160,7 +162,7 @@ class LiquipediaPage:
             if template.name.matches(infobox_name):
                 for param in template.params:
                     key = str(param.name).strip()
-                    value = str(param.value).strip()
+                    value = str(param.value).strip().replace("<br>", ", ")
                     infobox_dict[key] = value
                 self.name = infobox_dict['name'] if (self.name is None
                                                      and "name" in infobox_dict) else self.name
@@ -184,7 +186,7 @@ class LiquipediaPage:
         obj.user = user
         obj.raw_str = response
         obj.game = game
-        obj.name = name
+        obj.name = unquote(name)
         if action not in ["wikicode", "html"]:
             raise UnknownParsingMethodException("Unknown Parsing Method")
         obj.action = action

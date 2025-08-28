@@ -230,12 +230,15 @@ def parse_grouped_games(name:str, info:List[str]) -> List[pd.DataFrame]:
         info = mw.parse(info)
     for template in info.filter_templates(recursive=True):
         if template.name.matches("Matchlist") or template.name.matches("SingleMatch"):
+            series_idx = 0
             for subtemplate in template.params:
                 if "title=" in str(subtemplate):
                     name = subtemplate.split("=")[1]
                 if "{{Match" in subtemplate or "{{SingleMatch" in subtemplate:
                     match_df = parse_series(str(subtemplate))
                     match_df['stage'] = name
+                    match_df['series_id'] = series_idx
+                    series_idx += 1
                     alldfs.append(match_df)
     return alldfs
 
@@ -454,7 +457,8 @@ def get_name_content_map(text: str) -> Dict[str, str]:
 def parse_news_str(raw_str: str) -> Dict[str, Union[str, List[str]]]:
     """Parses a string describing the news"""
     pattern = r"<ref.*?>(.*?)</ref>"
-    ref_content = re.findall(pattern, str(raw_str), flags=re.S)
+    cleaned = re.sub(r"\{\{\s*flag\b[^{}]*\}\}", "", raw_str, flags=re.IGNORECASE)
+    ref_content = re.findall(pattern, str(cleaned), flags=re.S)
 
     refs = []
     for ref in ref_content:
@@ -529,6 +533,5 @@ def extract_maps(wikitext):
         if t.name.strip().lower() == "map":
             params = {str(p.name).strip(): str(p.value).strip() for p in t.params}
             out.append(params)
-    if len(out) == 2:
-        print("aa")
+
     return out

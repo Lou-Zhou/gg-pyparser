@@ -20,6 +20,7 @@ Dependencies
 - LiquipediaPage: Base class for interacting with Liquipedia.
 """
 from typing import Dict, List, Union
+import regex as re
 from bs4 import BeautifulSoup
 import pandas as pd
 import mwparserfromhell as mw
@@ -174,7 +175,14 @@ class Player(liquipedia_page.LiquipediaPage):
                 subgear_dict = {}
                 heading = template.name.strip().replace(" table", "")
                 for param in template.params:
-                    subgear_dict[str(param.name)] = str(param.value).strip()
+                    #check for references
+                    pattern = r"<ref.*?>(.*?)</ref>"
+                    ref_content = re.findall(pattern, str(param.value).strip(), flags=re.S)
+                    if len(ref_content) > 0:
+                        subgear_dict[str(param.name)] = [ref.strip("[ ]") for ref in ref_content]
+                    else:
+                        subgear_dict[str(param.name)] = str(param.value).strip()
+                    
                 gear_dict[heading] = subgear_dict
         return gear_dict
     def get_achievements(self) -> Union[List[pd.DataFrame],

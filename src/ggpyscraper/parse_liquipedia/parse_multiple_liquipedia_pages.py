@@ -17,6 +17,7 @@ MethodNotFoundException
     Raised when calling an invalid method on a liquipedia_object
 
 """
+
 from typing import Callable, Optional, Union, List, Dict, Any
 from ggpyscraper.parse_liquipedia import parse_liquipedia_wc
 from ggpyscraper.liquipedia_objects import player, team, tournament
@@ -91,6 +92,6 @@ def create_multiple_pages(game : str,page_names : List[str], page_ts : Union[Lis
         if page_class is None:
             raise ValueError(f"Page class for type '{ptype}' is not registered.")
         raw_str = response[name.lower().strip()]
-        obj = page_class.from_raw_str(raw_str, game, name, user=user, action="wikicode")
+        obj = page_class.from_raw_str(raw_str, user, game, name, action="wikicode")
         objects[name] = obj
     return objects
