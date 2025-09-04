@@ -1,4 +1,4 @@
-# ggpyscraper
+# gg-pyscraper
 <!-- badges: start -->
 ![PyPI - Version](https://img.shields.io/pypi/v/ggpyscraper?style=for-the-badge)
 [![License](https://img.shields.io/github/license/Lou-Zhou/gg-pyscraper?style=for-the-badge)](https://github.com/Lou-Zhou/gg-pyscraper/blob/main/LICENSE)
@@ -27,13 +27,13 @@ There are three different types of liquipedia pages that we can parse: **tournam
 
 **user** – the exact page name on Liquipedia, as requested by the [Liquipedia API Terms of Use](https://liquipedia.net/api-terms-of-use), which should describe the projects and any contact information.
 
-**action** – For these pages, `ggpyparser` currently only supports wikicode parsing(the markup language of the website), `action = wikicode`, but because some pages are automatically generated, meaning that the wikicode does not yield relevant results, an html parse is currently in development(`action = html`). Currently, the html parse is only avaliable for counter-strike pages.
+**action** – For these pages, `ggpyscraper` currently only supports wikicode parsing(the markup language of the website), `action = wikicode`, but because some pages are automatically generated, meaning that the wikicode does not yield relevant results, an html parse is currently in development(`action = html`). Currently, the html parse is only avaliable for counter-strike pages.
 
 #### Tournament
 ``` python
 from ggpyscraper.liquipedia_objects import tournament
 t = tournament.Tournament(game = "counterstrike", name = "ELEAGUE/2018/Major",
-                           user = "ggpyparser-example(github.com/lou-zhou)",
+                           user = "ggpyscraper-example(github.com/lou-zhou)",
                            action = "wikicode"
                           )#defaults action = "wikicode"
 #get all matches - N.B. Since only the playoffs appear on the page,
@@ -58,7 +58,7 @@ t.get_talent()
 ``` python
 from ggpyscraper.liquipedia_objects import player
 t = player.Player(game = "counterstrike", name = "autimatic",
-                           user = "ggpyparser-example(github.com/lou-zhou)",
+                           user = "ggpyscraper-example(github.com/lou-zhou)",
                            action = "wikicode"
                           )#defaults action = "wikicode"
 #get the gear used by the player
@@ -71,7 +71,7 @@ t.get_info()
 ```python
 from ggpyscraper.liquipedia_objects import team
 t = team.Team(game = "counterstrike", name = "Cloud9",
-                           user = "ggpyparser-example(github.com/lou-zhou)",
+                           user = "ggpyscraper-example(github.com/lou-zhou)",
                            action = "wikicode"
                           )#defaults action = "wikicode"
 #get the news around the team(e.g. transfers)
@@ -88,7 +88,7 @@ t.get_players()
 ```
 
 ### Parsing "General" Liquipedia Pages
-To facilitate getting page names, `ggpyparser` is also able to parse pages displaying lists of teams, players, or tournaments(e.g. [liquipedia.net/counterstrike/S-Tier_Tournaments](https://liquipedia.net/counterstrike/S-Tier_Tournaments)).
+To facilitate getting page names, `ggpyscraper` is also able to parse pages displaying lists of teams, players, or tournaments(e.g. [liquipedia.net/counterstrike/S-Tier_Tournaments](https://liquipedia.net/counterstrike/S-Tier_Tournaments)).
 
 **N.B.** This parse uses an html parse, meaning that the rate limiting for the liquipedia API is significantly more stringent than wikicode parsing. Try not to call these html parses with high volume.
 ```python
@@ -96,25 +96,25 @@ from ggpyscraper.parse_liquipedia import parse_general_pages
 #parsing tournament pages ex: https://liquipedia.net/counterstrike/S-Tier_Tournaments
 parse_general_pages.parse_tournaments(name = "S-Tier_Tournaments", 
                     game =  "counterstrike",
-                    user =  "ggpyparser-example(github.com/lou-zhou)")
+                    user =  "ggpyscraper-example(github.com/lou-zhou)")
 
 #parsing transfer pages ex: https://liquipedia.net/counterstrike/Transfers/2025
 parse_general_pages.parse_transfers(name = "Transfers/2025",  
                 game =  "counterstrike",
-                user =  "ggpyparser-example(github.com/lou-zhou)")
+                user =  "ggpyscraper-example(github.com/lou-zhou)")
 
 #parsing team pages ex: https://liquipedia.net/counterstrike/Portal:Teams/Europe
 parse_general_pages.parse_teams(region= "Europe", 
             game = "counterstrike", 
-            user =  "ggpyparser-example(github.com/lou-zhou)")
+            user =  "ggpyscraper-example(github.com/lou-zhou)")
 
 #parsing player pages ex: https://liquipedia.net/counterstrike/Portal:Players/Europe
 parse_general_pages.parse_players(region= "Europe", 
-        game = "counterstrike", user =  "ggpyparser-example(github.com/lou-zhou)")
+        game = "counterstrike", user =  "ggpyscraper-example(github.com/lou-zhou)")
 #parsing player pages ex: https://liquipedia.net/counterstrike/Banned_Players/Valve
 #N.B. for games where there is no tournament specific bans, company is set to None
 parse_general_pages.parse_banned_players(game = "counterstrike", 
-            user = "ggpyparser-example(github.com/lou-zhou)",
+            user = "ggpyscraper-example(github.com/lou-zhou)",
             company = "Valve")
 
 ```
@@ -126,7 +126,7 @@ from ggpyscraper.parse_liquipedia import parse_multiple_liquipedia_pages
 
 parse_multiple_liquipedia_pages.create_multiple_pages(game = "counterstrike",
         page_names = ["Intel_Extreme_Masters/2025/Cologne", "Autimatic"],
-        user = "ggpyparser-example(github.com/lou-zhou)",
+        user = "ggpyscraper-example(github.com/lou-zhou)",
         page_ts = ["tournament", "player"])
 #page_names is a list of strings describing the page names of each page
 #page_ts is a list of strings of page types, valid elements of "tournament", "player", "team"
