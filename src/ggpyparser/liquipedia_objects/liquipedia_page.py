@@ -32,7 +32,7 @@ from bs4.element import Tag
 
 
 import pandas as pd
-from ggpyscraper.parse_liquipedia import parse_liquipedia_wc
+from ggpyparser.parse_liquipedia import parse_liquipedia_wc
 T = TypeVar('T', bound='LiquipediaPage')
 class UnknownParsingMethodException(Exception):
     """Exception raised when the parsing method is not html or wikicode"""
