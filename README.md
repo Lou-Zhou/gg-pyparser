@@ -1,6 +1,7 @@
 # gg-pyparser
 <!-- badges: start -->
-![PyPI - Version](https://img.shields.io/pypi/v/gg-pyparser?style=for-the-badge)
+![PyPI - Version](https://img.shields.io/pypi/v/ggpyparser?style=for-the-badge
+)
 [![License](https://img.shields.io/github/license/Lou-Zhou/gg-pyscraper?style=for-the-badge)](https://github.com/Lou-Zhou/gg-pyscraper/blob/main/LICENSE)
 [![Python Version](https://img.shields.io/badge/python-%3E%3D3.8-blue?style=for-the-badge)](...)
 
