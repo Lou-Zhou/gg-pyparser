@@ -23,7 +23,7 @@ from collections import defaultdict
 import pandas as pd
 from bs4 import BeautifulSoup
 from bs4.element import Tag
-from ggpyscraper.parse_liquipedia import parse_liquipedia_wc
+from ggpyparser.parse_liquipedia import parse_liquipedia_wc
 
 
 def parse_bracket_recursive_html(

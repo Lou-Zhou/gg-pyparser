@@ -206,7 +206,7 @@ def parse_series(series_info: str) -> pd.DataFrame:
 
     for p in match_tpl.params:
         if not ("map" in p.name or "opponent" in p.name):
-            matches[str(p.name)] = str(p.value)
+            matches[str(p.name)] = str(p.value).strip()
     return matches
 
 

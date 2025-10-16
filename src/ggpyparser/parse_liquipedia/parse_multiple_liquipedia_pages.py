@@ -19,8 +19,8 @@ MethodNotFoundException
 """
 
 from typing import Callable, Optional, Union, List, Dict, Any
-from ggpyscraper.parse_liquipedia import parse_liquipedia_wc
-from ggpyscraper.liquipedia_objects import player, team, tournament
+from ggpyparser.parse_liquipedia import parse_liquipedia_wc
+from ggpyparser.liquipedia_objects import player, team, tournament
 
 class MethodNotFoundException(Exception):
     """Exception raised when calling an invalid method on a liquipedia_object"""

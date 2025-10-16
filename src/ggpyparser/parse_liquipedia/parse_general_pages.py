@@ -9,7 +9,7 @@ Dependencies
 """
 import pandas as pd
 from bs4 import BeautifulSoup
-from ggpyscraper.liquipedia_objects import liquipedia_page
+from ggpyparser.liquipedia_objects import liquipedia_page
 def parse_collapsable_tables(soup : BeautifulSoup) -> pd.DataFrame:
     """
     Parses a beautifulsoup collapsible table
