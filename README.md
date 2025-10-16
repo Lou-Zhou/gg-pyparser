@@ -1,4 +1,4 @@
-# gg-pyscraper
+# gg-pyparser
 <!-- badges: start -->
 ![PyPI - Version](https://img.shields.io/pypi/v/gg-pyparser?style=for-the-badge)
 [![License](https://img.shields.io/github/license/Lou-Zhou/gg-pyscraper?style=for-the-badge)](https://github.com/Lou-Zhou/gg-pyscraper/blob/main/LICENSE)
